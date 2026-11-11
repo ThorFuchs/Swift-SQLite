@@ -1,0 +1,54 @@
+name: Native CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    name: macOS / build, test, iOS cross-compile, docs
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcrun swift --version
+          xcrun --sdk macosx --show-sdk-path
+      - name: Verify the vendored SQLite amalgamation
+        run: Scripts/verify-amalgamation.sh
+      - name: Build (debug and release)
+        run: |
+          xcrun swift build --build-tests
+          xcrun swift build -c release --scratch-path .build/release
+      - name: Test (macOS)
+        run: mkdir -p .build/ci && xcrun swift test --xunit-output .build/ci/xunit.xml
+      - name: Cross-compile for iOS device (arm64-apple-ios18.0)
+        run: |
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun swift build --build-tests --scratch-path .build/ios \
+            --triple arm64-apple-ios18.0 --sdk "$SDK"
+      - name: Cross-compile for iOS simulator (arm64-apple-ios18.0-simulator)
+        run: |
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun swift build --build-tests --scratch-path .build/iossim \
+            --triple arm64-apple-ios18.0-simulator --sdk "$SDK"
+      - name: Documentation (warnings are errors)
+        run: PATH="$(dirname "$(xcrun --find docc)"):$PATH" Scripts/build-docs.sh
+      - name: Preserve test results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-test-results
+          if-no-files-found: warn
+          retention-days: 30
+          path: .build/ci/
