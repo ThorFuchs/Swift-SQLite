@@ -470,12 +470,18 @@ private struct Context {
                 try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, x'01')", [.integer(Int64(index))])
             }
         }
+        let committedWALBytes = SQLiteCrashImage.fileSize(path + "-wal") ?? 0
+        let (cacheSize, cacheSpill) = try await database.write { (tx) throws(SQLiteError) in
+            (try tx.queryOne("PRAGMA cache_size")!.integer(0), try tx.queryOne("PRAGMA cache_spill")!.integer(0))
+        }
         let latch = SQLiteTestLatch()
         let crashPath = directory.file("crash-image.sqlite")
         let aborting = Task {
             try await database.write { (tx) throws(SQLiteError) in
-                // A tiny page cache makes SQLite spill uncommitted pages into the WAL.
+                // A tiny page cache and spill threshold make SQLite write uncommitted
+                // pages into the WAL, so the crash image holds frames without a commit.
                 try tx.execute("PRAGMA cache_size = 2")
+                try tx.execute("PRAGMA cache_spill = 2")
                 for index in 100..<400 {
                     try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, zeroblob(4096))", [.integer(Int64(index))])
                 }
@@ -491,10 +497,15 @@ private struct Context {
         guard case .failure = abortResult else {
             throw ConformanceFailure(message: "the simulated abort committed")
         }
-        try await database.write { (tx) throws(SQLiteError) in try tx.execute("PRAGMA cache_size = -2000") }
+        try await database.write { (tx) throws(SQLiteError) in
+            try tx.execute("PRAGMA cache_size = \(cacheSize)")
+            try tx.execute("PRAGMA cache_spill = \(cacheSpill)")
+        }
         let liveRows = try await count(database)
         await database.close()
         try require(liveRows == 10, "after the aborted write the live database has \(liveRows) rows, expected 10")
+        try require(walBytes > committedWALBytes + 100 * 4096,
+                    "only \(walBytes) WAL bytes at the crash point (\(committedWALBytes) committed); uncommitted pages did not spill")
 
         let recovered = try await SQLiteDatabase.open(kit.makeConfiguration(crashPath), migrations: migrations)
         let integrity = try await recovered.read { (tx) throws(SQLiteError) in

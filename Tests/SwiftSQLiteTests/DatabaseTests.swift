@@ -241,7 +241,7 @@ struct DatabaseTests {
     func notADatabase() async throws {
         let directory = try SQLiteTemporaryDirectory()
         let path = directory.file("garbage.sqlite")
-        try Array(repeating: UInt8(0x5A), count: 8192).withUnsafeBufferPointer { buffer in
+        Array(repeating: UInt8(0x5A), count: 8192).withUnsafeBufferPointer { buffer in
             let file = fopen(path, "wb")!
             fwrite(buffer.baseAddress, 1, buffer.count, file)
             fclose(file)

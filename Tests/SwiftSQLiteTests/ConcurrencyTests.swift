@@ -108,7 +108,7 @@ struct ConcurrencyTests {
             guard case .failure(let error) = result else { Issue.record("waiting write succeeded"); latch.open(); return }
             #expect(error as? SQLiteError == .interrupted)
             latch.open()
-            try await holder.value
+            _ = try await holder.value
             let count = try await database.read { (tx) throws(SQLiteError) in try tx.scalar("SELECT count(*) FROM items") }
             #expect(count == .integer(0))
         }
@@ -134,7 +134,7 @@ struct ConcurrencyTests {
             let result = await blocked.result
             let latency = ContinuousClock.now - start
             latch.open()
-            try await holder.value
+            _ = try await holder.value
             await other.close()
             #expect(latency < .seconds(2), "busy wait ignored cancellation for \(latency)")
             guard case .failure(let error) = result else { Issue.record("blocked write succeeded"); return }
@@ -157,7 +157,7 @@ struct ConcurrencyTests {
             }
             let elapsed = ContinuousClock.now - start
             latch.open()
-            try await holder.value
+            _ = try await holder.value
             await other.close()
             guard case .busy(let details) = error else { Issue.record("got \(String(describing: error))"); return }
             #expect(details.code.primary == .busy)

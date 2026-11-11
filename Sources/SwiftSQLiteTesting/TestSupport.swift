@@ -3,6 +3,13 @@
 import Foundation
 import Synchronization
 import SwiftSQLite
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// A clock that only moves when told to. Inject it as ``SQLiteConfiguration/clock``.
 public final class SQLiteManualClock: SQLiteClock {
