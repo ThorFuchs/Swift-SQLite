@@ -1,25 +1,51 @@
 # Swift-SQLite 0.1.0 — acceptance report
 
-Candidate for acceptance review, prepared 2026-11-11. Not tagged, not released.
+Candidate for acceptance review, revised 2026-11-11 after the first review. Not
+tagged, not released, not merged.
 
-- **Source verified:** branch `swift-sqlite-0.1.0` at commit `68d64ff`
-  (`68d64ffc2c4f3b250e131605702cc0776c115c61`). The only later commit adds this file.
+- **Source verified:** branch `swift-sqlite-0.1.0` at commit `b2082f2`
+  (`b2082f22` …, "Rename module SwiftSQLite to SQLiteSwift"). The only later commit
+  updates this file.
+- **Modules:** `SQLiteSwift` (library), `SQLiteSwiftTesting` (test kit), `CSQLiteSwift`
+  (Linux C target). The spec's names `SwiftSQLite` / `SwiftSQLiteTesting` were changed
+  on review because they clash with a private Apple framework (see open point 4).
 - **Spec:** `swift-sqlite-requirements.md` (MCP-Server session, ADR-0004 Tasks phase C)
   plus the task brief from the Swift-JSON session.
 - **Machine:** macOS (Darwin 27.3, arm64). Swift 6.4.2 via swiftly
   (`TOOLCHAINS=org.swift.642202610261a`), Xcode 27.2 SDKs (macOS 27.2, iOS 27.2).
   System SQLite 3.54.0 on macOS/iOS; vendored 3.54.1 on Linux.
 
+## Review changes (round 1)
+
+| Request | Change | Evidence |
+| --- | --- | --- |
+| Linux glibc build failed: `pthread_setname_np` / `pthread_getname_np` not in scope | `65fa658`: `Sources/CSQLiteSwift/thread.c` + `include/csqliteswift_thread.h` wrap both calls. They are compiled in the Linux-only C target with `_GNU_SOURCE`; `WorkerThread.swift` calls them on Linux | Linux CI run 43079040926 on `65fa658`: x86_64 and arm64 both **45 tests passed**, including the thread-name test |
+| Rename the module to avoid Apple's private `SwiftSQLite.framework` | `b2082f2`: `SwiftSQLite` → `SQLiteSwift`, `SwiftSQLiteTesting` → `SQLiteSwiftTesting`, `CSwiftSQLite` → `CSQLiteSwift`; thread names `sqliteswift.*`, probe tables `sqliteswift_probe*`, C helpers `csqliteswift_*`, DocC catalog `SQLiteSwift.docc`, README, CHANGELOG, workflows. Amalgamation bytes unchanged (verify script passes) | Clash check below; full local re-verification on a clean `.build` (commands table) |
+
+**Clash check for `SQLiteSwift` (done before renaming):**
+
+- No framework or module named `SQLiteSwift` exists in `/System/Library/Frameworks`,
+  `/System/Library/PrivateFrameworks`, `/Library/Frameworks`, the macOS 27.2 and
+  iOS 27.2 SDK framework directories, or the Swift 6.4.2 toolchain.
+- A byte scan of the macOS dyld shared cache (`dyld_shared_cache_arm64e*`) finds no
+  `SQLiteSwift` string. As a control, the same scan finds Apple's mangled
+  `11SwiftSQLite` 14 times, so the method works.
+- GitHub: no `Package.swift` declares a `SQLiteSwift` library. Repositories named
+  `SQLiteSwift` are small, inactive Xcode projects (at most 6 stars, last pushed
+  2016–2018) without `Package.swift`. SQLite.swift exports the module `SQLite`, and
+  Vapor's package exports `SQLiteKit`; neither is affected.
+
 ## Summary
 
 | Platform | What ran | Result |
 | --- | --- | --- |
-| macOS (arm64) | `swift test`, 3 consecutive runs plus 1 final run | **45 tests / 90 test cases in 6 suites passed**, exit 0 every run, 0 warnings |
-| iOS simulator (iOS 27.2 runtime, iPhone 17 Pro, deployment target 18.0) | `xcodebuild test` | **45 tests in 6 suites passed**, `TEST SUCCEEDED`, exit 0 |
-| iOS device `arm64-apple-ios18.0` | cross-compile incl. tests | exit 0 |
-| iOS simulator `arm64-apple-ios18.0-simulator` | cross-compile incl. tests | exit 0 |
-| Linux (musl, Static Linux SDK 6.4.0, aarch64 + x86_64) | cross-compile and link of both library products; a static executable that runs the conformance kit was linked | exit 0; **tests not executed on Linux** (see "Not run") |
-| Linux (Ubuntu 24.04, Swift 6.4.0 container) | `.github/workflows/linux.yml` | **Not run locally.** Runs on the PR; result to be read there |
+| macOS (arm64), local | `swift test`, 3 runs on a clean `.build` | **45 tests / 90 test cases in 6 suites passed**, exit 0 each run, 0 warnings |
+| iOS simulator (iOS 27.2 runtime, iPhone 17 Pro, deployment target 18.0), local | `xcodebuild test` | **45 tests in 6 suites passed**, `TEST SUCCEEDED`, exit 0 |
+| iOS device `arm64-apple-ios18.0`, local | cross-compile incl. tests | exit 0 |
+| iOS simulator `arm64-apple-ios18.0-simulator`, local | cross-compile incl. tests | exit 0 |
+| Linux glibc, Ubuntu 24.04, Swift 6.4.0 container, x86_64 + arm64 | GitHub Actions `linux.yml` | **45 tests in 6 suites passed on both architectures** (see "CI evidence") |
+| macOS on the self-hosted `xcode-27` runner | GitHub Actions `native.yml` | passed (build, 45 tests, iOS cross-compiles, DocC); see "CI evidence" |
+| Linux musl (Static Linux SDK 6.4.0, aarch64 + x86_64), local | cross-compile of both library products | exit 0 |
 | DocC | `Scripts/build-docs.sh` (`--warnings-as-errors`) | exit 0 |
 | Amalgamation integrity | `Scripts/verify-amalgamation.sh` | exit 0, both SHA-256 match |
 
@@ -38,8 +64,8 @@ migrations, and in-memory.
 
 | Requirement | Evidence |
 | --- | --- |
-| Repository `Swift-SQLite`; product/module `SQLiteSwift`; test kit `SQLiteSwiftTesting`; no module named `SQLite` | `Package.swift` (products `SQLiteSwift`, `SQLiteSwiftTesting`; C module `CSQLiteSwift`) |
-| macOS 15, iOS 18, Linux | `Package.swift` `platforms: [.macOS(.v15), .iOS(.v18)]`; iOS cross-compiles and simulator run; Linux musl cross-compile; `linux.yml` |
+| Repository `Swift-SQLite`; library product/module and test kit; no module named `SQLite` | `Package.swift`: products `SQLiteSwift`, `SQLiteSwiftTesting`; C module `CSQLiteSwift`. The spec named these `SwiftSQLite` / `SwiftSQLiteTesting`; they were renamed on review because of Apple's private `SwiftSQLite.framework` (open point 4). The repository name is unchanged |
+| macOS 15, iOS 18, Linux | `Package.swift` `platforms: [.macOS(.v15), .iOS(.v18)]`; iOS cross-compiles and simulator run; Linux CI on Ubuntu 24.04 (glibc, x86_64 + arm64) runs the full suite |
 | Swift tools 6.4, language mode 6, strict concurrency | `Package.swift` (`swift-tools-version: 6.4`, `.swiftLanguageMode(.v6)` on every Swift target). Builds with 0 warnings |
 | Zero package dependencies | `Package.swift` has no `dependencies:`. Only toolchain modules are used: `Synchronization`, libc, and `Foundation` in `SQLiteSwiftTesting` only |
 
@@ -59,7 +85,7 @@ migrations, and in-memory.
 | One writer using `BEGIN IMMEDIATE` | `SQLiteDatabase.writeOrRollback` (`BEGIN IMMEDIATE` on the writer behind a 1-slot pool). Tests: *Writes are serialized on the single writer*; conformance `busyContention` |
 | Bounded reader pool (default 4) on WAL snapshot transactions | `SQLiteConfiguration.readerCount = 4`, `SQLiteSlotPool`; reads use `BEGIN DEFERRED` on read-only, `query_only` connections. Tests: *The reader pool bounds concurrent reads* (0, 1, 4 readers); *A read transaction keeps one WAL snapshot while a write commits*; *Default busy timeout is 5 seconds* (also checks the defaults) |
 | Single connection configurable | `SQLiteConfiguration.singleConnection(path:)` / `readerCount = 0`; `.inMemory()`. Conformance suite "Single connection" (8 cases); reader-pool test with 0 readers |
-| Dedicated thread per connection, never the cooperative pool | `Internal/WorkerThread.swift` (one pthread per connection, FIFO jobs); `SQLiteConnection.run` bridges with a continuation. Test: *Closures run on dedicated named threads, not the cooperative pool* (thread names `sqliteswift.w` / `sqliteswift.rN`) |
+| Dedicated thread per connection, never the cooperative pool | `Internal/WorkerThread.swift` (one pthread per connection, FIFO jobs); `SQLiteConnection.run` bridges with a continuation. Test: *Closures run on dedicated named threads, not the cooperative pool* (thread names `sqliteswift.w` / `sqliteswift.rN`; passes on macOS, the iOS simulator and Linux glibc, where the names are set through the C wrappers in `Sources/CSQLiteSwift/thread.c`) |
 | Thread joined on close | `SQLiteWorkerThread.stopAndJoin()` (`pthread_join`); `SQLiteDatabase.close()`. Tests: *close() joins every worker thread; later calls throw .closed; close is idempotent*; *close() waits for running operations to finish* |
 | No detached tasks, no global singletons | `grep -rn "Task.detached\|static var\|static let shared" Sources/SQLiteSwift Sources/SQLiteSwiftTesting` finds nothing. Global state is limited to C callback functions without storage |
 
@@ -135,7 +161,7 @@ The kit also provides `SQLiteManualClock`, `SQLiteTemporaryDirectory`,
 
 ## Exact commands and outcomes
 
-Environment for every command (from the repository root):
+Local environment for the `swift` commands (from the repository root):
 
 ```sh
 set -a; . ~/.swiftly/env.sh; set +a
@@ -143,45 +169,63 @@ export TOOLCHAINS=org.swift.642202610261a SDKROOT="$(/usr/bin/xcrun --sdk macosx
 hash -r
 ```
 
+Re-run after the rename on `b2082f2`, starting from `rm -rf .build`:
+
 | # | Command | Exit | Outcome |
 | --- | --- | --- | --- |
-| 1 | `Scripts/verify-amalgamation.sh` | 0 | `sqlite3.c` and `sqlite3.h` SHA-256 match |
+| 1 | `Scripts/verify-amalgamation.sh` | 0 | `Sources/CSQLiteSwift/sqlite3.c` and `include/sqlite3.h` SHA-256 match |
 | 2 | `swift build --build-tests` | 0 | 0 warnings outside `sqlite3.c` |
 | 3 | `swift build -c release --scratch-path .build/release-check` | 0 | |
-| 4 | `swift test --xunit-output …` (runs 1, 2, 3) | 0, 0, 0 | 45 tests in 6 suites passed (1.70 s, 1.00 s, 1.17 s) |
-| 5 | `swift test --xunit-output …` (final, after the warning cleanup) | 0 | 45 tests / 90 cases passed, 0 warnings |
-| 6 | `SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0 --sdk "$SDKROOT"` | 0 | |
-| 7 | `SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path) swift build --build-tests --scratch-path .build/iossim --triple arm64-apple-ios18.0-simulator --sdk "$SDKROOT"` | 0 | |
-| 8 | `xcodebuild -scheme Swift-SQLite-Package -destination "id=<iPhone 17 Pro, iOS 27.2 simulator>" -derivedDataPath .build/xcode test` | 0 | `TEST SUCCEEDED`, 45 tests in 6 suites passed (7.9 s) |
-| 9 | `Scripts/build-docs.sh` | 0 | DocC archive built with `--warnings-as-errors` |
-| 10 | `swift build --scratch-path .build/linux --swift-sdk swift-6.4.0-RELEASE_static-linux-0.1.0 --triple aarch64-swift-linux-musl` (`SDKROOT` unset) | 0 | |
-| 11 | Same with `--triple x86_64-swift-linux-musl` | 0 | |
-| 12 | Scratch package linking `SQLiteSwift` + `SQLiteSwiftTesting` into a static `x86_64-swift-linux-musl` executable that runs `SQLiteConformanceKit().runAll()` | 0 | ELF 64-bit static executable linked (not executed); the same program run on macOS printed `ALL PASSED` |
+| 4 | `swift test --xunit-output …` (runs 1, 2, 3) | 0, 0, 0 | 45 tests / 90 cases in 6 suites passed (0.97 s, 0.91 s, 0.93 s), 0 warnings |
+| 5 | `SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0 --sdk "$SDKROOT"` | 0 | |
+| 6 | `SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path) swift build --build-tests --scratch-path .build/iossim --triple arm64-apple-ios18.0-simulator --sdk "$SDKROOT"` | 0 | |
+| 7 | `Scripts/build-docs.sh` | 0 | DocC archive built with `--warnings-as-errors` |
+| 8 | `swift build --scratch-path .build/linux --swift-sdk swift-6.4.0-RELEASE_static-linux-0.1.0 --triple aarch64-swift-linux-musl` (`SDKROOT` unset) | 0 | |
+| 9 | Same with `--triple x86_64-swift-linux-musl` | 0 | |
+| 10 | `env -i HOME=$HOME PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -scheme Swift-SQLite-Package -destination "id=<iPhone 17 Pro, iOS 27.2 simulator>" -derivedDataPath .build/xcode test` | 0 | `TEST SUCCEEDED`, 45 tests in 6 suites passed (4.2 s) |
+
+Note on row 10: the first attempt ran in the shell with swiftly's `TOOLCHAINS`
+override still exported. It failed to link (`posix_spawn failed`, exit 74) because
+`xcodebuild` picked up the swiftly toolchain. Run `xcodebuild` with Xcode's own
+toolchain, as in row 10.
+
+## CI evidence (GitHub Actions on PR #1)
+
+| Run | Commit | Job | Result |
+| --- | --- | --- | --- |
+| 43077752652 | `6b32330` | Linux / x86_64, Linux / arm64 | **failed**: glibc build error (`pthread_setname_np`), fixed in `65fa658` |
+| 43077752962 | `6b32330` | macOS / build, test, iOS cross-compile, docs (`xcode-27`) | passed; Apple Swift 6.4.2; 45 tests in 6 suites passed |
+| 43079040926 | `65fa658` | Linux / x86_64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
+| 43079040926 | `65fa658` | Linux / arm64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
+| 43079041048 | `65fa658` | macOS | cancelled (superseded by the push of `b2082f2`) |
+| 43079739130 | `b2082f2` | Linux / x86_64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
+| 43079739130 | `b2082f2` | Linux / arm64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
+| 43079739107 | `b2082f2` | macOS (`xcode-27`) | queued for the self-hosted runner when this report was written; the same job passed on `6b32330`, and the change since then is the rename (verified locally, rows 1–10) |
 
 ## Not run, and open points
 
-1. **Linux tests were not executed.** This Mac has no container runtime (no Docker
-   daemon, Podman or Colima). Linux evidence is limited to musl cross-compilation and
-   linking (rows 10–12). The Static Linux SDK has no `Testing` module, so the test
-   target can't be cross-built. `linux.yml` (Ubuntu 24.04, Swift 6.4.0 container,
-   x86_64 + arm64) runs the full suite on glibc. Its result on the PR is the Linux
-   test evidence and has to be checked there.
-2. **CI not yet observed green.** `native.yml` targets the self-hosted `xcode-27`
-   runner. Self-hosted runners on a personal account are registered per repository,
-   so the runner may need to be added to `ThorFuchs/Swift-SQLite` before the job
-   leaves the queue.
+1. **Linux tests only in CI.** This Mac has no container runtime (no Docker daemon,
+   Podman or Colima). Linux test evidence comes from `linux.yml` on GitHub Actions
+   (table above). Locally, Linux was only cross-compiled against musl. The musl SDK
+   exposed `pthread_setname_np` without `_GNU_SOURCE`, which is why the glibc failure
+   was only seen in CI.
+2. **Self-hosted macOS runner (maintainer action).** `native.yml` needs the
+   self-hosted runner with label `xcode-27` registered for `ThorFuchs/Swift-SQLite`.
+   The jobs above were picked up by such a runner, so it is reachable today. Keeping
+   it registered for this repository is a maintainer task; this session did not
+   change runner registration.
 3. **iOS 18 runtime not installed.** The simulator run used the iOS 27.2 runtime with
    deployment target 18.0. A device or iOS 18 runtime run was not done, so the
    file-protection effect on a real data-protected volume is unverified; only the
    open-flag mapping is tested.
-4. **Apple private framework name clash.** macOS ships
-   `/System/Library/PrivateFrameworks/SQLiteSwift.framework`. Its Objective-C-visible
-   class `SQLiteSwift.Connection` clashed with an internal class here (objc runtime
-   warning in test processes). Fixed by giving all internal classes an `SQLite` prefix
-   (`c425821`). Apple's current class names are `Connection`, `Statement`,
-   `TableBuilder`, `DateFunctions` and two private coders. Future macOS releases could
-   add more names, so the module name `SQLiteSwift` carries a small residual risk.
-   The fallback would be renaming the module; the spec currently fixes the name.
+4. **Apple private framework name clash, resolved by renaming.** macOS ships
+   `/System/Library/PrivateFrameworks/SwiftSQLite.framework`, which can be loaded into
+   any process. Its Objective-C-visible classes (`SwiftSQLite.Connection`,
+   `SwiftSQLite.Statement`, `SwiftSQLite.TableBuilder`, `SwiftSQLite.DateFunctions`
+   and two private coders) share their names with classes of a module called
+   `SwiftSQLite`. Under the old name, an objc runtime warning showed in test processes
+   (`c425821`). The module is now `SQLiteSwift` (`b2082f2`), and internal classes
+   keep their `SQLite` prefix as a second safeguard.
 5. **Durability against power loss** is configured (`synchronous=FULL`, optional
    `appleFullFSync`) but can't be proven by tests. The crash-image test covers
    process-crash consistency, not drive write caches.
@@ -189,5 +233,8 @@ hash -r
    Linux deletes it. Tests accept either.
 7. The pending-waiter queue for connections is bounded only by the number of calling
    tasks. There is no separate admission limit.
-8. The repository `ThorFuchs/Swift-SQLite` (private) was already created and seeded
-   with an "Initial commit" outside this session before the branch was pushed.
+8. The repository `ThorFuchs/Swift-SQLite` (private) was created and seeded with an
+   "Initial commit" outside this session before the branch was pushed.
+9. **Consumers** (MCP-Server-Core, Content-Collections, Swift-JSON) must use the new
+   names: `.product(name: "SQLiteSwift", package: "Swift-SQLite")`,
+   `import SQLiteSwift`, `import SQLiteSwiftTesting`.

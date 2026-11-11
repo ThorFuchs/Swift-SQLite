@@ -2,6 +2,8 @@
 
 ## 0.1.0 — candidate (unreleased, untagged)
 
+- Module names: `SQLiteSwift` (library), `SQLiteSwiftTesting` (test kit), `CSQLiteSwift`
+  (Linux C target). Not `SwiftSQLite`, which clashes with a private Apple framework.
 - `SQLiteSwift`: `SQLiteDatabase` with one `BEGIN IMMEDIATE` writer and a bounded
   reader pool on WAL snapshot transactions, or a single connection. Each connection
   has a dedicated thread, joined on `close()`.
