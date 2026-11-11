@@ -43,8 +43,8 @@ tagged, not released, not merged.
 | iOS simulator (iOS 27.2 runtime, iPhone 17 Pro, deployment target 18.0), local | `xcodebuild test` | **45 tests in 6 suites passed**, `TEST SUCCEEDED`, exit 0 |
 | iOS device `arm64-apple-ios18.0`, local | cross-compile incl. tests | exit 0 |
 | iOS simulator `arm64-apple-ios18.0-simulator`, local | cross-compile incl. tests | exit 0 |
-| Linux glibc, Ubuntu 24.04, Swift 6.4.0 container, x86_64 + arm64 | GitHub Actions `linux.yml` | **45 tests in 6 suites passed on both architectures** (see "CI evidence") |
-| macOS in CI | GitHub Actions `native.yml`, now on the self-hosted runner `[self-hosted, macOS, ARM64, macos-27]` | **Pending runner registration** (open point 2). An earlier run on the GitHub-hosted `xcode-27` image passed (build, 45 tests, iOS cross-compiles, DocC). The new workflow's steps were dry-run locally with Xcode 27.2 and passed (row 11) |
+| Linux glibc, Ubuntu 24.04, Swift 6.4.0 container, x86_64 + arm64 | GitHub Actions `linux.yml` | **45 tests in 6 suites passed on both architectures** at `b2082f2`, `5461939` and `7101a7b` (see "CI evidence") |
+| macOS in CI | GitHub Actions `native.yml` on the self-hosted runner `[self-hosted, macOS, ARM64, macos-27]` (runner `macos27-thorstens-macbook-pro-swift-sqlite`) | **passed** at `7101a7b`: Xcode 27.2, Apple Swift 6.4.2, 45 tests in 6 suites passed, iOS cross-compiles and DocC succeeded |
 | Linux musl (Static Linux SDK 6.4.0, aarch64 + x86_64), local | cross-compile of both library products | exit 0 |
 | DocC | `Scripts/build-docs.sh` (`--warnings-as-errors`) | exit 0 |
 | Amalgamation integrity | `Scripts/verify-amalgamation.sh` | exit 0, both SHA-256 match |
@@ -202,26 +202,31 @@ toolchain, as in row 10.
 | 43079739130 | `b2082f2` | Linux / x86_64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
 | 43079739130 | `b2082f2` | Linux / arm64 | passed; Swift 6.4 (swift-6.4-RELEASE); **45 tests in 6 suites passed** |
 | 43079739107, 43080113229 | `b2082f2`, `5461939` | macOS (`xcode-27`) | stayed queued (the GitHub-hosted `xcode-27` image is not reliably available to this private repository); cancelled or superseded. The workflow now targets the self-hosted runner |
+| 43080112966 | `5461939` | Linux / x86_64, Linux / arm64 | passed |
+| 43080571458 | `7101a7b` | macOS on the self-hosted runner `macos27-thorstens-macbook-pro-swift-sqlite` | **passed**; Xcode 27.2, Apple Swift 6.4.2; 45 tests in 6 suites passed; iOS device and simulator cross-compiles and DocC succeeded; about 1 min 10 s |
+| 43080571700, attempt 1 | `7101a7b` | Linux / arm64: passed (45 tests). Linux / x86_64: **failed** | Not a test failure. SwiftPM's own `swift-package` process crashed (SIGSEGV in libdispatch `_dispatch_event_loop_drain` while discovering the clang tool) during build planning of `swift test`, before any test ran. Rerun of the failed job only |
+| 43080571700, attempt 2 | `7101a7b` | Linux / x86_64, Linux / arm64 | **passed**; 45 tests in 6 suites passed on both |
 
 ## Not run, and open points
 
-1. **Linux tests only in CI.** This Mac has no container runtime (no Docker daemon,
+1. **Linux tests only in CI; one toolchain flake seen.** One Linux x86_64 attempt
+   crashed inside SwiftPM's build planning (`swift-package`, libdispatch) before any
+   test ran; the rerun passed. Nothing in this package runs in that process.
+   **Linux tests only in CI.** This Mac has no container runtime (no Docker daemon,
    Podman or Colima). Linux test evidence comes from `linux.yml` on GitHub Actions
    (table above). Locally, Linux was only cross-compiled against musl. The musl SDK
    exposed `pthread_setname_np` without `_GNU_SOURCE`, which is why the glibc failure
    was only seen in CI.
-2. **macOS CI runner (maintainer action).** `xcode-27` is a GitHub-hosted image, not
-   a self-hosted runner. The one passing run used it (runner group "GitHub Actions"),
-   but later runs stayed queued on this private repository. `native.yml` now uses
-   `runs-on: [self-hosted, macOS, ARM64, macos-27]` with
-   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (Xcode 27.2) and
-   `TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault`, so a swiftly toolchain in the
-   runner's environment cannot take over. The job stays bounded: `timeout-minutes: 45`,
-   all build output in the workspace's `.build`, `clean: true` checkout, and an
-   always-run final step that deletes `.build` (peak about 365 MB). **The maintainer
-   must register the self-hosted runner for `ThorFuchs/Swift-SQLite`;** this session
-   did not register or change any runner. Until then the macOS CI job waits in the
-   queue. The macOS evidence is local (rows 1–11) plus the earlier GitHub-hosted run.
+2. **macOS CI runner.** `xcode-27` is a GitHub-hosted image (runner group "GitHub
+   Actions") that later runs could not get on this private repository. `native.yml`
+   now uses the maintainer's self-hosted runner `[self-hosted, macOS, ARM64, macos-27]`
+   with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (Xcode 27.2) and
+   `TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault`. It stays bounded:
+   `timeout-minutes: 45`, build output only in the workspace's `.build`, `clean: true`
+   checkout, and an always-run step that deletes `.build` (peak about 365 MB). The
+   maintainer registered the runner; this session did not register or change runners.
+   The first run passed (`7101a7b`). The runner Mac reported 31 GiB free (97% used) at
+   that time, so disk headroom stays a maintainer concern.
 3. **iOS 18 runtime not installed.** The simulator run used the iOS 27.2 runtime with
    deployment target 18.0. A device or iOS 18 runtime run was not done, so the
    file-protection effect on a real data-protected volume is unverified; only the
