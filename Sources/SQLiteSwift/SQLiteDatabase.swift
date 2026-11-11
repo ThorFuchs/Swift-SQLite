@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif
@@ -53,10 +53,10 @@ public final class SQLiteDatabase: Sendable {
     /// The schema version the migrations define (the number of migrations).
     public let supportedSchemaVersion: Int
 
-    let writer: Connection
-    let readers: [Connection]
-    let writerPool: SlotPool
-    let readerPool: SlotPool?
+    let writer: SQLiteConnection
+    let readers: [SQLiteConnection]
+    let writerPool: SQLiteSlotPool
+    let readerPool: SQLiteSlotPool?
 
     private enum Lifecycle {
         case open
@@ -67,14 +67,14 @@ public final class SQLiteDatabase: Sendable {
 
     private init(
         configuration: SQLiteConfiguration, supportedSchemaVersion: Int,
-        writer: Connection, readers: [Connection]
+        writer: SQLiteConnection, readers: [SQLiteConnection]
     ) {
         self.configuration = configuration
         self.supportedSchemaVersion = supportedSchemaVersion
         self.writer = writer
         self.readers = readers
-        self.writerPool = SlotPool(capacity: 1)
-        self.readerPool = readers.isEmpty ? nil : SlotPool(capacity: readers.count)
+        self.writerPool = SQLiteSlotPool(capacity: 1)
+        self.readerPool = readers.isEmpty ? nil : SQLiteSlotPool(capacity: readers.count)
     }
 
     // MARK: Opening
@@ -94,8 +94,8 @@ public final class SQLiteDatabase: Sendable {
     ) async throws(SQLiteError) -> SQLiteDatabase {
         try configuration.validate()
         try SQLiteMigration.validate(migrations)
-        let writer = try Connection(role: .writer, configuration: configuration)
-        var readers: [Connection] = []
+        let writer = try SQLiteConnection(role: .writer, configuration: configuration)
+        var readers: [SQLiteConnection] = []
         do throws(SQLiteError) {
             try await writer.run { (core) throws(SQLiteError) in
                 try core.open()
@@ -104,7 +104,7 @@ public final class SQLiteDatabase: Sendable {
                 try core.migrate(migrations)
             }
             for index in 0..<configuration.readerCount {
-                let reader = try Connection(role: .reader(index), configuration: configuration)
+                let reader = try SQLiteConnection(role: .reader(index), configuration: configuration)
                 readers.append(reader)
                 try await reader.run { (core) throws(SQLiteError) in
                     try core.open()
@@ -276,7 +276,7 @@ public final class SQLiteDatabase: Sendable {
     }
 }
 
-extension ConnectionCore {
+extension SQLiteConnectionCore {
     func configureWriter() throws(SQLiteError) {
         if case .file = configuration.storage {
             guard case .text(let mode) = try scalarInternal("PRAGMA journal_mode = WAL"),

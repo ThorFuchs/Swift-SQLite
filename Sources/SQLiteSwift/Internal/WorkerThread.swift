@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#if os(Linux)
+internal import CSQLiteSwift
+#endif
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -12,7 +15,7 @@ import Musl
 ///
 /// Jobs run in FIFO order. ``stopAndJoin()`` lets queued jobs finish, then joins the
 /// thread. The cooperative thread pool never runs SQLite calls.
-final class WorkerThread: @unchecked Sendable {
+final class SQLiteWorkerThread: @unchecked Sendable {
     typealias Job = @Sendable () -> Void
 
     private let shared: WorkerShared
@@ -114,7 +117,7 @@ private func workerEntry(_ context: UnsafeMutableRawPointer?) -> UnsafeMutableRa
 private final class WorkerShared: @unchecked Sendable {
     let mutex: UnsafeMutablePointer<pthread_mutex_t>
     let condition: UnsafeMutablePointer<pthread_cond_t>
-    var jobs: [WorkerThread.Job] = []
+    var jobs: [SQLiteWorkerThread.Job] = []
     var stopping = false
     var exited = false
     let name: String
@@ -163,15 +166,19 @@ private final class WorkerShared: @unchecked Sendable {
 private func setCurrentThreadName(_ name: String) {
     #if canImport(Darwin)
     _ = pthread_setname_np(name)
-    #elseif canImport(Glibc) || canImport(Musl)
-    // Linux limits thread names to 15 bytes plus NUL.
-    _ = pthread_setname_np(pthread_self(), String(name.utf8.prefix(15))!)
+    #elseif os(Linux)
+    // glibc hides pthread_setname_np without _GNU_SOURCE; use the C wrapper.
+    _ = csqliteswift_set_current_thread_name(name)
     #endif
 }
 
 /// Reads the calling thread's name (used by tests to prove where code runs).
 func currentThreadName() -> String {
     var buffer = [CChar](repeating: 0, count: 64)
+    #if canImport(Darwin)
     _ = pthread_getname_np(pthread_self(), &buffer, buffer.count)
+    #elseif os(Linux)
+    _ = csqliteswift_get_current_thread_name(&buffer, buffer.count)
+    #endif
     return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
 }

@@ -51,7 +51,7 @@ public enum SQLiteValueKind: String, Sendable, Hashable {
     case null, integer, real, text, blob
 }
 
-/// Every error thrown by SwiftSQLite.
+/// Every error thrown by SQLiteSwift.
 ///
 /// SQLite result codes that callers usually need to handle (busy, constraint,
 /// corrupt, full, interrupted) have their own cases. Every other result code is
@@ -72,7 +72,7 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     case tooBig(SQLiteErrorDetails)
     /// The operation stopped because the calling task was cancelled.
     ///
-    /// SwiftSQLite calls `sqlite3_interrupt` on the connection running the operation.
+    /// SQLiteSwift calls `sqlite3_interrupt` on the connection running the operation.
     /// Any open transaction is rolled back before this error is thrown.
     case interrupted
     /// The database's `user_version` is newer than the migrations this code knows.

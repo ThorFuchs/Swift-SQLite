@@ -44,9 +44,9 @@ public struct SQLiteTimestamp: Sendable, Hashable, Comparable, CustomStringConve
 
 /// A source of the current time for expiry helpers.
 ///
-/// SwiftSQLite never reads the wall clock in its expiry helpers; they ask the clock
+/// SQLiteSwift never reads the wall clock in its expiry helpers; they ask the clock
 /// in ``SQLiteConfiguration/clock``. Tests inject a manual clock
-/// (`SQLiteManualClock` in SwiftSQLiteTesting).
+/// (`SQLiteManualClock` in SQLiteSwiftTesting).
 public protocol SQLiteClock: Sendable {
     /// The current time.
     func now() -> SQLiteTimestamp

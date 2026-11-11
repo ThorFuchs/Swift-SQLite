@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif
@@ -21,14 +21,14 @@ enum ConnectionRole: Sendable, Equatable {
 
     var threadName: String {
         switch self {
-        case .writer: "swiftsqlite.w"
-        case .reader(let index): "swiftsqlite.r\(index)"
+        case .writer: "sqliteswift.w"
+        case .reader(let index): "sqliteswift.r\(index)"
         }
     }
 }
 
 /// Cancellation state of one job run on a connection.
-final class JobToken: Sendable {
+final class SQLiteJobToken: Sendable {
     private let flag = Atomic<Bool>(false)
 
     func cancel() { flag.store(true, ordering: .sequentiallyConsistent) }
@@ -41,20 +41,20 @@ struct InterruptibleHandle: @unchecked Sendable {
 }
 
 struct InterruptState: ~Copyable {
-    var current: JobToken?
+    var current: SQLiteJobToken?
     var handle: InterruptibleHandle?
 }
 
 /// The SQLite connection handle and everything that must be used only on the
 /// connection's worker thread.
-final class ConnectionCore: @unchecked Sendable {
+final class SQLiteConnectionCore: @unchecked Sendable {
     let role: ConnectionRole
     let configuration: SQLiteConfiguration
     private(set) var db: OpaquePointer?
-    let cache: StatementCache
+    let cache: SQLiteStatementCache
     /// The job running right now (worker thread only).
-    var activeToken: JobToken?
-    /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SwiftSQLite itself runs them.
+    var activeToken: SQLiteJobToken?
+    /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SQLiteSwift itself runs them.
     var allowTransactionControl = false
     private var busyStart = ContinuousClock.now
     /// Shared with other threads; guards `sqlite3_interrupt`.
@@ -63,7 +63,7 @@ final class ConnectionCore: @unchecked Sendable {
     init(role: ConnectionRole, configuration: SQLiteConfiguration) {
         self.role = role
         self.configuration = configuration
-        self.cache = StatementCache(capacity: configuration.limits.statementCacheCapacity)
+        self.cache = SQLiteStatementCache(capacity: configuration.limits.statementCacheCapacity)
     }
 
     // MARK: Open and close
@@ -159,7 +159,7 @@ final class ConnectionCore: @unchecked Sendable {
     }
 
     fileprivate func authorize(action: Int32) -> Int32 {
-        // SQLITE_TRANSACTION: BEGIN/COMMIT/ROLLBACK are owned by SwiftSQLite.
+        // SQLITE_TRANSACTION: BEGIN/COMMIT/ROLLBACK are owned by SQLiteSwift.
         if action == SQLITE_TRANSACTION && !allowTransactionControl {
             return SQLITE_DENY
         }
@@ -168,7 +168,7 @@ final class ConnectionCore: @unchecked Sendable {
 
     // MARK: Internal statements
 
-    /// Runs SwiftSQLite's own SQL (transaction control, pragmas). Not cached and not
+    /// Runs SQLiteSwift's own SQL (transaction control, pragmas). Not cached and not
     /// subject to the cancellation check.
     func execInternal(_ sql: String) throws(SQLiteError) {
         let db = try handle()
@@ -178,7 +178,7 @@ final class ConnectionCore: @unchecked Sendable {
         guard rc == SQLITE_OK else { throw error(rc) }
     }
 
-    /// Runs SwiftSQLite's own single-row query and returns the first column.
+    /// Runs SQLiteSwift's own single-row query and returns the first column.
     func scalarInternal(_ sql: String) throws(SQLiteError) -> SQLiteValue {
         let db = try handle()
         var statement: OpaquePointer?
@@ -344,7 +344,7 @@ final class ConnectionCore: @unchecked Sendable {
 
 private func busyCallback(_ context: UnsafeMutableRawPointer?, _ attempt: Int32) -> Int32 {
     guard let context else { return 0 }
-    return Unmanaged<ConnectionCore>.fromOpaque(context).takeUnretainedValue().onBusy(attempt: attempt)
+    return Unmanaged<SQLiteConnectionCore>.fromOpaque(context).takeUnretainedValue().onBusy(attempt: attempt)
 }
 
 private func authorizerCallback(
@@ -356,17 +356,17 @@ private func authorizerCallback(
     _: UnsafePointer<CChar>?
 ) -> Int32 {
     guard let context else { return SQLITE_OK }
-    return Unmanaged<ConnectionCore>.fromOpaque(context).takeUnretainedValue().authorize(action: action)
+    return Unmanaged<SQLiteConnectionCore>.fromOpaque(context).takeUnretainedValue().authorize(action: action)
 }
 
 /// One connection: a SQLite handle plus the dedicated thread that uses it.
-final class Connection: Sendable {
-    let core: ConnectionCore
-    let worker: WorkerThread
+final class SQLiteConnection: Sendable {
+    let core: SQLiteConnectionCore
+    let worker: SQLiteWorkerThread
 
     init(role: ConnectionRole, configuration: SQLiteConfiguration) throws(SQLiteError) {
-        core = ConnectionCore(role: role, configuration: configuration)
-        worker = try WorkerThread(name: role.threadName)
+        core = SQLiteConnectionCore(role: role, configuration: configuration)
+        worker = try SQLiteWorkerThread(name: role.threadName)
     }
 
     deinit {
@@ -380,9 +380,9 @@ final class Connection: Sendable {
     /// cooperative pool. Task cancellation sets the job's flag and calls
     /// `sqlite3_interrupt` if the job is running.
     func run<T: Sendable>(
-        _ body: @escaping @Sendable (ConnectionCore) throws(SQLiteError) -> T
+        _ body: @escaping @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
-        let token = JobToken()
+        let token = SQLiteJobToken()
         let core = self.core
         let result: Result<T, SQLiteError> = await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Result<T, SQLiteError>, Never>) in

@@ -1,0 +1,49 @@
+name: Linux CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    name: Linux / ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: ubuntu-latest
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    container:
+      # Official Swift 6.4.0 Ubuntu 24.04 multi-architecture image (same digest as Swift-JSON).
+      image: swift@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: swift --version
+      - name: Verify the vendored SQLite amalgamation
+        run: Scripts/verify-amalgamation.sh
+      - name: Build (debug and release)
+        run: |
+          swift build --build-tests
+          swift build -c release --scratch-path .build/release
+      - name: Test (Linux, pinned SQLite amalgamation)
+        run: mkdir -p .build/ci && swift test --xunit-output .build/ci/xunit.xml
+      - name: Preserve test results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: linux-${{ matrix.architecture }}-test-results
+          if-no-files-found: warn
+          retention-days: 30
+          path: .build/ci/

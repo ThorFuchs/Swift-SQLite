@@ -2,13 +2,13 @@
 
 import Foundation
 import Synchronization
-import SwiftSQLite
+import SQLiteSwift
 
-/// A generic conformance kit for SwiftSQLite setups.
+/// A generic conformance kit for SQLiteSwift setups.
 ///
 /// Consumers run it with their own migrations and configuration (for example from a
 /// domain store's test suite). Each check uses a fresh temporary directory and its own
-/// probe tables (`swiftsqlite_probe*`), so it never touches real data.
+/// probe tables (`sqliteswift_probe*`), so it never touches real data.
 ///
 /// ```swift
 /// let kit = SQLiteConformanceKit(migrations: MyStore.migrations) { path in
@@ -90,7 +90,7 @@ public struct SQLiteConformanceKit: Sendable {
     public func run(_ check: Check) async -> CheckResult {
         let notes = Notes()
         do {
-            let directory = try SQLiteTemporaryDirectory(prefix: "swiftsqlite-conformance")
+            let directory = try SQLiteTemporaryDirectory(prefix: "sqliteswift-conformance")
             defer { directory.remove() }
             let context = Context(kit: self, directory: directory, notes: notes)
             if let reason = context.skipReason(for: check) {
@@ -137,9 +137,9 @@ private final class Counter: Sendable {
     var current: Int { value.load(ordering: .sequentiallyConsistent) }
 }
 
-private let probeTable = "swiftsqlite_probe"
+private let probeTable = "sqliteswift_probe"
 private let createProbe =
-    "CREATE TABLE IF NOT EXISTS swiftsqlite_probe (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 1, payload BLOB)"
+    "CREATE TABLE IF NOT EXISTS sqliteswift_probe (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 1, payload BLOB)"
 private let longQuery =
     "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 3000000000) SELECT max(x) FROM c"
 
@@ -228,8 +228,8 @@ private struct Context {
         // A failing migration rolls back alone; earlier ones stay committed.
         let good = SQLiteMigration(version: n + 1, name: "probe ok", sql: createProbe)
         let bad = SQLiteMigration(version: n + 2, name: "probe failing") { (tx) throws(SQLiteError) in
-            try tx.execute("CREATE TABLE swiftsqlite_probe_failed (id INTEGER)")
-            try tx.execute("INSERT INTO swiftsqlite_probe_missing VALUES (1)")
+            try tx.execute("CREATE TABLE sqliteswift_probe_failed (id INTEGER)")
+            try tx.execute("INSERT INTO sqliteswift_probe_missing VALUES (1)")
         }
         let failingConfig = configuration("failing.sqlite")
         do {
@@ -245,7 +245,7 @@ private struct Context {
             let database = try await SQLiteDatabase.open(failingConfig, migrations: migrations + [good])
             let version = try await database.schemaVersion()
             let leftover = try await database.read { (tx) throws(SQLiteError) in
-                try tx.scalar("SELECT count(*) FROM sqlite_master WHERE name = 'swiftsqlite_probe_failed'")
+                try tx.scalar("SELECT count(*) FROM sqlite_master WHERE name = 'sqliteswift_probe_failed'")
             }
             await database.close()
             try require(version == n + 1, "after a failed migration the version is \(version), expected \(n + 1)")
@@ -287,24 +287,24 @@ private struct Context {
         let database = try await open(configuration())
         defer { Task { await database.close() } }
         try await database.write { (tx) throws(SQLiteError) in
-            try tx.execute("INSERT INTO swiftsqlite_probe (id, version, payload) VALUES (1, 1, x'00')")
+            try tx.execute("INSERT INTO sqliteswift_probe (id, version, payload) VALUES (1, 1, x'00')")
         }
         let first = try await database.write { (tx) throws(SQLiteError) in
-            try tx.compareAndSet(table: "swiftsqlite_probe", id: 1, expectedVersion: 1,
+            try tx.compareAndSet(table: "sqliteswift_probe", id: 1, expectedVersion: 1,
                                  assignments: [SQLiteAssignment("payload", .blob([1]))])
         }
         try require(first == .updated(newVersion: 2), "first CAS returned \(first), expected updated(2)")
         let stale = try await database.write { (tx) throws(SQLiteError) in
-            try tx.compareAndSet(table: "swiftsqlite_probe", id: 1, expectedVersion: 1,
+            try tx.compareAndSet(table: "sqliteswift_probe", id: 1, expectedVersion: 1,
                                  assignments: [SQLiteAssignment("payload", .blob([9]))])
         }
         try require(stale == .conflict(currentVersion: 2), "stale CAS returned \(stale), expected conflict(2)")
         let missing = try await database.write { (tx) throws(SQLiteError) in
-            try tx.compareAndSet(table: "swiftsqlite_probe", id: 999, expectedVersion: 1)
+            try tx.compareAndSet(table: "sqliteswift_probe", id: 999, expectedVersion: 1)
         }
         try require(missing == .notFound, "CAS on a missing row returned \(missing), expected notFound")
         let payload = try await database.read { (tx) throws(SQLiteError) in
-            try tx.queryOne("SELECT payload FROM swiftsqlite_probe WHERE id = 1")!.blob(0)
+            try tx.queryOne("SELECT payload FROM sqliteswift_probe WHERE id = 1")!.blob(0)
         }
         try require(payload == [1], "the stale CAS changed the payload")
 
@@ -314,7 +314,7 @@ private struct Context {
             for index in 0..<contenders {
                 group.addTask {
                     try await database.write { (tx) throws(SQLiteError) in
-                        try tx.compareAndSet(table: "swiftsqlite_probe", id: 1, expectedVersion: 2,
+                        try tx.compareAndSet(table: "sqliteswift_probe", id: 1, expectedVersion: 2,
                                              assignments: [SQLiteAssignment("payload", .blob([UInt8(index)]))])
                     }
                 }
@@ -342,7 +342,7 @@ private struct Context {
         let latch = SQLiteTestLatch()
         let holding = Task {
             try await holder.write { (tx) throws(SQLiteError) in
-                try tx.execute("INSERT INTO swiftsqlite_probe (payload) VALUES (x'01')")
+                try tx.execute("INSERT INTO sqliteswift_probe (payload) VALUES (x'01')")
                 latch.blockingWait()
             }
         }
@@ -352,7 +352,7 @@ private struct Context {
         var observed: SQLiteError?
         do {
             try await waiter.write { (tx) throws(SQLiteError) in
-                try tx.execute("INSERT INTO swiftsqlite_probe (payload) VALUES (x'02')")
+                try tx.execute("INSERT INTO sqliteswift_probe (payload) VALUES (x'02')")
             }
         } catch {
             observed = error
@@ -366,7 +366,7 @@ private struct Context {
         try require(elapsed >= timeout * 0.8, "busy came after \(elapsed), before the \(timeout) timeout")
         try require(elapsed < timeout + .seconds(5), "busy took \(elapsed), far beyond the \(timeout) timeout")
         try await waiter.write { (tx) throws(SQLiteError) in
-            try tx.execute("INSERT INTO swiftsqlite_probe (payload) VALUES (x'03')")
+            try tx.execute("INSERT INTO sqliteswift_probe (payload) VALUES (x'03')")
         }
         let rows = try await count(waiter)
         await waiter.close()
@@ -397,7 +397,7 @@ private struct Context {
         // A long write: its insert must roll back.
         let writing = Task {
             try await database.write { (tx) throws(SQLiteError) in
-                try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (4242, x'42')")
+                try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (4242, x'42')")
                 return try tx.scalar(longQuery)
             }
         }
@@ -415,7 +415,7 @@ private struct Context {
         let preCancelled = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await database.write { (tx) throws(SQLiteError) in
-                try tx.execute("INSERT INTO swiftsqlite_probe (id) VALUES (4343)")
+                try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (4343)")
             }
         }
         let preResult = await preCancelled.result
@@ -426,7 +426,7 @@ private struct Context {
 
         // The database still works.
         try await database.write { (tx) throws(SQLiteError) in
-            try tx.execute("INSERT INTO swiftsqlite_probe (id) VALUES (1)")
+            try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (1)")
         }
         let rows = try await count(database)
         await database.close()
@@ -442,7 +442,7 @@ private struct Context {
         let database = try await open(config)
         try await database.write { (tx) throws(SQLiteError) in
             for index in 0..<200 {
-                try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, zeroblob(1024))", [.integer(Int64(index))])
+                try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (?, zeroblob(1024))", [.integer(Int64(index))])
             }
         }
         let walBefore = SQLiteCrashImage.fileSize(path + "-wal") ?? 0
@@ -467,17 +467,23 @@ private struct Context {
         let database = try await open(config)
         try await database.write { (tx) throws(SQLiteError) in
             for index in 1...10 {
-                try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, x'01')", [.integer(Int64(index))])
+                try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (?, x'01')", [.integer(Int64(index))])
             }
+        }
+        let committedWALBytes = SQLiteCrashImage.fileSize(path + "-wal") ?? 0
+        let (cacheSize, cacheSpill) = try await database.write { (tx) throws(SQLiteError) in
+            (try tx.queryOne("PRAGMA cache_size")!.integer(0), try tx.queryOne("PRAGMA cache_spill")!.integer(0))
         }
         let latch = SQLiteTestLatch()
         let crashPath = directory.file("crash-image.sqlite")
         let aborting = Task {
             try await database.write { (tx) throws(SQLiteError) in
-                // A tiny page cache makes SQLite spill uncommitted pages into the WAL.
+                // A tiny page cache and spill threshold make SQLite write uncommitted
+                // pages into the WAL, so the crash image holds frames without a commit.
                 try tx.execute("PRAGMA cache_size = 2")
+                try tx.execute("PRAGMA cache_spill = 2")
                 for index in 100..<400 {
-                    try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, zeroblob(4096))", [.integer(Int64(index))])
+                    try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (?, zeroblob(4096))", [.integer(Int64(index))])
                 }
                 latch.blockingWait()
                 throw SQLiteError.invalidArgument("conformance: simulated abort mid-write")
@@ -491,10 +497,15 @@ private struct Context {
         guard case .failure = abortResult else {
             throw ConformanceFailure(message: "the simulated abort committed")
         }
-        try await database.write { (tx) throws(SQLiteError) in try tx.execute("PRAGMA cache_size = -2000") }
+        try await database.write { (tx) throws(SQLiteError) in
+            try tx.execute("PRAGMA cache_size = \(cacheSize)")
+            try tx.execute("PRAGMA cache_spill = \(cacheSpill)")
+        }
         let liveRows = try await count(database)
         await database.close()
         try require(liveRows == 10, "after the aborted write the live database has \(liveRows) rows, expected 10")
+        try require(walBytes > committedWALBytes + 100 * 4096,
+                    "only \(walBytes) WAL bytes at the crash point (\(committedWALBytes) committed); uncommitted pages did not spill")
 
         let recovered = try await SQLiteDatabase.open(kit.makeConfiguration(crashPath), migrations: migrations)
         let integrity = try await recovered.read { (tx) throws(SQLiteError) in
@@ -514,7 +525,7 @@ private struct Context {
     func checkDiskFull() async throws {
         let database = try await open(configuration())
         try await database.write { (tx) throws(SQLiteError) in
-            try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (1, x'01')")
+            try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (1, x'01')")
             let pages = try tx.queryOne("PRAGMA page_count")!.integer(0)
             try tx.execute("PRAGMA max_page_count = \(pages + 2)")
         }
@@ -522,7 +533,7 @@ private struct Context {
         do {
             try await database.write { (tx) throws(SQLiteError) in
                 for index in 100..<164 {
-                    try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (?, zeroblob(4096))", [.integer(Int64(index))])
+                    try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (?, zeroblob(4096))", [.integer(Int64(index))])
                 }
             }
         } catch {
@@ -535,7 +546,7 @@ private struct Context {
         let rowsAfterFull = try await count(database)
         try await database.write { (tx) throws(SQLiteError) in
             try tx.execute("PRAGMA max_page_count = 1073741823")
-            try tx.execute("INSERT INTO swiftsqlite_probe (id, payload) VALUES (2, x'02')")
+            try tx.execute("INSERT INTO sqliteswift_probe (id, payload) VALUES (2, x'02')")
         }
         let rows = try await count(database)
         await database.close()

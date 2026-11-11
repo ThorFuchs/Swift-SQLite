@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif
@@ -12,7 +12,7 @@ internal import SQLite3
 /// A transaction is valid only inside its closure and only on the thread that calls
 /// the closure; it isn't `Sendable`. Using it afterwards throws
 /// ``SQLiteError/misuse(_:)``. Transaction control statements (`BEGIN`, `COMMIT`,
-/// `ROLLBACK`) are refused; SwiftSQLite owns the transaction. `SAVEPOINT` is allowed.
+/// `ROLLBACK`) are refused; SQLiteSwift owns the transaction. `SAVEPOINT` is allowed.
 public final class SQLiteTransaction {
     /// Whether a transaction may write.
     public enum Kind: Sendable, Hashable {
@@ -23,10 +23,10 @@ public final class SQLiteTransaction {
     }
 
     public let kind: Kind
-    let core: ConnectionCore
+    let core: SQLiteConnectionCore
     private var isValid = true
 
-    init(core: ConnectionCore, kind: Kind) {
+    init(core: SQLiteConnectionCore, kind: Kind) {
         self.core = core
         self.kind = kind
     }

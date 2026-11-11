@@ -7,5 +7,5 @@
 #if defined(__linux__)
 #include "sqlite3.c"
 #else
-typedef int cswiftsqlite_unused_on_this_platform;
+typedef int csqliteswift_unused_on_this_platform;
 #endif

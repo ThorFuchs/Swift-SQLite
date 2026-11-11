@@ -2,7 +2,14 @@
 
 import Foundation
 import Synchronization
-import SwiftSQLite
+import SQLiteSwift
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// A clock that only moves when told to. Inject it as ``SQLiteConfiguration/clock``.
 public final class SQLiteManualClock: SQLiteClock {
@@ -31,7 +38,7 @@ public final class SQLiteManualClock: SQLiteClock {
 public final class SQLiteTemporaryDirectory: Sendable {
     public let path: String
 
-    public init(prefix: String = "swiftsqlite") throws {
+    public init(prefix: String = "sqliteswift") throws {
         let base = FileManager.default.temporaryDirectory.path
         var template = Array("\(base)/\(prefix).XXXXXX".utf8CString)
         guard let created = template.withUnsafeMutableBufferPointer({ mkdtemp($0.baseAddress!) }) else {
