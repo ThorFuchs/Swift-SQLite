@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-@testable import SwiftSQLite
-import SwiftSQLiteTesting
+@testable import SQLiteSwift
+import SQLiteSwiftTesting
 import Synchronization
 import Testing
 #if canImport(Darwin)
@@ -188,8 +188,8 @@ struct DatabaseTests {
         try await withDatabase { database, _ in
             let writerName = try await database.write { (_) throws(SQLiteError) in currentThreadName() }
             let readerName = try await database.read { (_) throws(SQLiteError) in currentThreadName() }
-            #expect(writerName == "swiftsqlite.w")
-            #expect(readerName.hasPrefix("swiftsqlite.r"))
+            #expect(writerName == "sqliteswift.w")
+            #expect(readerName.hasPrefix("sqliteswift.r"))
         }
     }
 

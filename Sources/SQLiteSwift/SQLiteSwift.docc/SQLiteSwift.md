@@ -1,10 +1,10 @@
-# ``SwiftSQLite``
+# ``SQLiteSwift``
 
 Durable, bounded SQLite persistence for Swift concurrency, with no package dependencies.
 
 ## Overview
 
-SwiftSQLite is the shared SQLite base for domain stores such as MCP task stores
+SQLiteSwift is the shared SQLite base for domain stores such as MCP task stores
 and content-collection stores. It provides the parts every store needs and none of
 the domain logic:
 
@@ -23,7 +23,7 @@ the domain logic:
 - A compare-and-set helper that returns a conflict as a value, bounded reads, a
   bounded statement cache and an injectable clock for expiry queries.
 
-On Apple platforms SwiftSQLite links the system SQLite. On Linux it compiles a
+On Apple platforms SQLiteSwift links the system SQLite. On Linux it compiles a
 pinned, unmodified SQLite amalgamation.
 
 ## Topics

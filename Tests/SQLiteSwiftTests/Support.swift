@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import SwiftSQLite
-import SwiftSQLiteTesting
+import SQLiteSwift
+import SQLiteSwiftTesting
 import Testing
 
 /// Runs `operation` and returns the SQLiteError it threw, or `nil`.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import SwiftSQLite
-import SwiftSQLiteTesting
+import SQLiteSwift
+import SQLiteSwiftTesting
 import Testing
 
 @Suite("Bounded reads and statement cache")

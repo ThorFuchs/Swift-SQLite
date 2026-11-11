@@ -22,14 +22,14 @@ let package = Package(
     name: "Swift-SQLite",
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
-        .library(name: "SwiftSQLite", targets: ["SwiftSQLite"]),
-        .library(name: "SwiftSQLiteTesting", targets: ["SwiftSQLiteTesting"]),
+        .library(name: "SQLiteSwift", targets: ["SQLiteSwift"]),
+        .library(name: "SQLiteSwiftTesting", targets: ["SQLiteSwiftTesting"]),
     ],
     targets: [
         // Pinned, unmodified SQLite amalgamation. `shim.c` compiles it on Linux only;
-        // see Sources/CSwiftSQLite/PROVENANCE.md and THIRD_PARTY_NOTICES.md.
+        // see Sources/CSQLiteSwift/PROVENANCE.md and THIRD_PARTY_NOTICES.md.
         .target(
-            name: "CSwiftSQLite",
+            name: "CSQLiteSwift",
             exclude: ["sqlite3.c", "PROVENANCE.md"],
             sources: ["shim.c", "thread.c"],
             cSettings: amalgamationDefines,
@@ -39,20 +39,20 @@ let package = Package(
             ]
         ),
         .target(
-            name: "SwiftSQLite",
+            name: "SQLiteSwift",
             dependencies: [
-                .target(name: "CSwiftSQLite", condition: .when(platforms: [.linux]))
+                .target(name: "CSQLiteSwift", condition: .when(platforms: [.linux]))
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "SwiftSQLiteTesting",
-            dependencies: ["SwiftSQLite"],
+            name: "SQLiteSwiftTesting",
+            dependencies: ["SQLiteSwift"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "SwiftSQLiteTests",
-            dependencies: ["SwiftSQLite", "SwiftSQLiteTesting"],
+            name: "SQLiteSwiftTests",
+            dependencies: ["SQLiteSwift", "SQLiteSwiftTesting"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

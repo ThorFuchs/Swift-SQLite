@@ -4,13 +4,13 @@ Durable, bounded SQLite persistence for Swift concurrency. It is the shared SQLi
 base for the Swift-JSON package family (MCP task stores, content-collection stores,
 versioned JSON envelopes). Domain logic stays in the consuming packages.
 
-- **Products:** `SwiftSQLite` (library) and `SwiftSQLiteTesting` (conformance kit and
+- **Products:** `SQLiteSwift` (library) and `SQLiteSwiftTesting` (conformance kit and
   test helpers).
 - **Platforms:** macOS 15, iOS 18, Linux. Swift 6.4 tools, Swift 6 language mode,
   strict concurrency.
 - **Dependencies:** none. Apple platforms link the system SQLite. Linux compiles a
   pinned, unmodified SQLite 3.54.1 amalgamation
-  ([provenance](Sources/CSwiftSQLite/PROVENANCE.md)).
+  ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)).
 - **License:** Apache-2.0. SQLite itself is public domain; see
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -33,7 +33,7 @@ versioned JSON envelopes). Domain logic stays in the consuming packages.
 ## Quick start
 
 ```swift
-import SwiftSQLite
+import SQLiteSwift
 
 let database = try await SQLiteDatabase.open(
     SQLiteConfiguration(path: path),
@@ -59,12 +59,12 @@ let body = try await database.read { tx throws(SQLiteError) in
 await database.close()
 ```
 
-The DocC catalog has a full [Getting Started guide](Sources/SwiftSQLite/SwiftSQLite.docc/GettingStarted.md).
+The DocC catalog has a full [Getting Started guide](Sources/SQLiteSwift/SQLiteSwift.docc/GettingStarted.md).
 Build the documentation with `Scripts/build-docs.sh`.
 
 ## Conformance kit
 
-`SwiftSQLiteTesting.SQLiteConformanceKit` runs eight checks against your migrations
+`SQLiteSwiftTesting.SQLiteConformanceKit` runs eight checks against your migrations
 and configuration: migrations, schema-too-new refusal, compare-and-set conflict, busy
 contention, cancellation interrupt, WAL checkpoint, recovery after an aborted
 mid-write crash image, and `SQLITE_FULL` via `max_page_count`.
@@ -95,10 +95,11 @@ swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0
 
 ## Notes
 
-- macOS ships a private framework that is also named `SwiftSQLite`. It can be loaded
-  into test processes. Its Objective-C-visible class names (`Connection`, `Statement`,
-  `TableBuilder`, `DateFunctions`) must not be reused here. All internal classes of
-  this package carry an `SQLite` prefix for that reason.
+- The module is named `SQLiteSwift`, not `SwiftSQLite`. macOS ships a private
+  `/System/Library/PrivateFrameworks/SwiftSQLite.framework` that can be loaded into
+  any process. Its Objective-C-visible classes (for example `SwiftSQLite.Connection`)
+  clashed with this package under the old module name. Internal classes also keep an
+  `SQLite` prefix.
 - Apple's system SQLite keeps the `-wal` file after the last connection closes
   (truncated to 0 bytes). Linux deletes it.
 

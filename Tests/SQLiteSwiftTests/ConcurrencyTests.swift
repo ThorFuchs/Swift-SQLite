@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-@testable import SwiftSQLite
-import SwiftSQLiteTesting
+@testable import SQLiteSwift
+import SQLiteSwiftTesting
 import Synchronization
 import Testing
 #if canImport(Darwin)

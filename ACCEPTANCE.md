@@ -38,18 +38,18 @@ migrations, and in-memory.
 
 | Requirement | Evidence |
 | --- | --- |
-| Repository `Swift-SQLite`; product/module `SwiftSQLite`; test kit `SwiftSQLiteTesting`; no module named `SQLite` | `Package.swift` (products `SwiftSQLite`, `SwiftSQLiteTesting`; C module `CSwiftSQLite`) |
+| Repository `Swift-SQLite`; product/module `SQLiteSwift`; test kit `SQLiteSwiftTesting`; no module named `SQLite` | `Package.swift` (products `SQLiteSwift`, `SQLiteSwiftTesting`; C module `CSQLiteSwift`) |
 | macOS 15, iOS 18, Linux | `Package.swift` `platforms: [.macOS(.v15), .iOS(.v18)]`; iOS cross-compiles and simulator run; Linux musl cross-compile; `linux.yml` |
 | Swift tools 6.4, language mode 6, strict concurrency | `Package.swift` (`swift-tools-version: 6.4`, `.swiftLanguageMode(.v6)` on every Swift target). Builds with 0 warnings |
-| Zero package dependencies | `Package.swift` has no `dependencies:`. Only toolchain modules are used: `Synchronization`, libc, and `Foundation` in `SwiftSQLiteTesting` only |
+| Zero package dependencies | `Package.swift` has no `dependencies:`. Only toolchain modules are used: `Synchronization`, libc, and `Foundation` in `SQLiteSwiftTesting` only |
 
 ### SQLite source
 
 | Requirement | Evidence |
 | --- | --- |
-| System SQLite on Apple platforms | `Sources/SwiftSQLite/**`: `#if os(Linux) internal import CSwiftSQLite #else internal import SQLite3`; `CSwiftSQLite` is a dependency only `.when(platforms: [.linux])`; `shim.c` compiles nothing outside `__linux__` |
-| Linux: pinned, unmodified amalgamation in a C target | `Sources/CSwiftSQLite/sqlite3.c`, `include/sqlite3.h` (3.54.1). `Scripts/verify-amalgamation.sh` passes; it also runs in both CI workflows. The Linux object exports 266 `sqlite3_*` functions |
-| Provenance file (version, URL, SHA-256, public-domain notice) | `Sources/CSwiftSQLite/PROVENANCE.md` (also the archive SHA3-256, which was checked against sqlite.org); `THIRD_PARTY_NOTICES.md` |
+| System SQLite on Apple platforms | `Sources/SQLiteSwift/**`: `#if os(Linux) internal import CSQLiteSwift #else internal import SQLite3`; `CSQLiteSwift` is a dependency only `.when(platforms: [.linux])`; `shim.c` compiles nothing outside `__linux__` |
+| Linux: pinned, unmodified amalgamation in a C target | `Sources/CSQLiteSwift/sqlite3.c`, `include/sqlite3.h` (3.54.1). `Scripts/verify-amalgamation.sh` passes; it also runs in both CI workflows. The Linux object exports 266 `sqlite3_*` functions |
+| Provenance file (version, URL, SHA-256, public-domain notice) | `Sources/CSQLiteSwift/PROVENANCE.md` (also the archive SHA3-256, which was checked against sqlite.org); `THIRD_PARTY_NOTICES.md` |
 | Only `cSettings` defines, no `unsafeFlags` | `Package.swift` (`amalgamationDefines`, Linux-only `.define`s; `linkedLibrary("pthread")` and `("m")`). `unsafeFlags` appears in `Package.swift` only in a comment saying it is not used |
 
 ### Connections and threads
@@ -59,9 +59,9 @@ migrations, and in-memory.
 | One writer using `BEGIN IMMEDIATE` | `SQLiteDatabase.writeOrRollback` (`BEGIN IMMEDIATE` on the writer behind a 1-slot pool). Tests: *Writes are serialized on the single writer*; conformance `busyContention` |
 | Bounded reader pool (default 4) on WAL snapshot transactions | `SQLiteConfiguration.readerCount = 4`, `SQLiteSlotPool`; reads use `BEGIN DEFERRED` on read-only, `query_only` connections. Tests: *The reader pool bounds concurrent reads* (0, 1, 4 readers); *A read transaction keeps one WAL snapshot while a write commits*; *Default busy timeout is 5 seconds* (also checks the defaults) |
 | Single connection configurable | `SQLiteConfiguration.singleConnection(path:)` / `readerCount = 0`; `.inMemory()`. Conformance suite "Single connection" (8 cases); reader-pool test with 0 readers |
-| Dedicated thread per connection, never the cooperative pool | `Internal/WorkerThread.swift` (one pthread per connection, FIFO jobs); `SQLiteConnection.run` bridges with a continuation. Test: *Closures run on dedicated named threads, not the cooperative pool* (thread names `swiftsqlite.w` / `swiftsqlite.rN`) |
+| Dedicated thread per connection, never the cooperative pool | `Internal/WorkerThread.swift` (one pthread per connection, FIFO jobs); `SQLiteConnection.run` bridges with a continuation. Test: *Closures run on dedicated named threads, not the cooperative pool* (thread names `sqliteswift.w` / `sqliteswift.rN`) |
 | Thread joined on close | `SQLiteWorkerThread.stopAndJoin()` (`pthread_join`); `SQLiteDatabase.close()`. Tests: *close() joins every worker thread; later calls throw .closed; close is idempotent*; *close() waits for running operations to finish* |
-| No detached tasks, no global singletons | `grep -rn "Task.detached\|static var\|static let shared" Sources/SwiftSQLite Sources/SwiftSQLiteTesting` finds nothing. Global state is limited to C callback functions without storage |
+| No detached tasks, no global singletons | `grep -rn "Task.detached\|static var\|static let shared" Sources/SQLiteSwift Sources/SQLiteSwiftTesting` finds nothing. Global state is limited to C callback functions without storage |
 
 ### Durability
 
@@ -115,9 +115,9 @@ bind canonical JSON bytes as `SQLiteValue.blob`.
 
 ## Conformance kit (deliverable 2)
 
-`SQLiteConformanceKit` (`Sources/SwiftSQLiteTesting/SQLiteConformanceKit.swift`) is
+`SQLiteConformanceKit` (`Sources/SQLiteSwiftTesting/SQLiteConformanceKit.swift`) is
 generic. A consumer passes its own migrations and a configuration factory. Each
-check uses a fresh temporary directory and `swiftsqlite_probe*` tables only.
+check uses a fresh temporary directory and `sqliteswift_probe*` tables only.
 
 | Check | What it proves | Observed (macOS, default configuration) |
 | --- | --- | --- |
@@ -156,7 +156,7 @@ hash -r
 | 9 | `Scripts/build-docs.sh` | 0 | DocC archive built with `--warnings-as-errors` |
 | 10 | `swift build --scratch-path .build/linux --swift-sdk swift-6.4.0-RELEASE_static-linux-0.1.0 --triple aarch64-swift-linux-musl` (`SDKROOT` unset) | 0 | |
 | 11 | Same with `--triple x86_64-swift-linux-musl` | 0 | |
-| 12 | Scratch package linking `SwiftSQLite` + `SwiftSQLiteTesting` into a static `x86_64-swift-linux-musl` executable that runs `SQLiteConformanceKit().runAll()` | 0 | ELF 64-bit static executable linked (not executed); the same program run on macOS printed `ALL PASSED` |
+| 12 | Scratch package linking `SQLiteSwift` + `SQLiteSwiftTesting` into a static `x86_64-swift-linux-musl` executable that runs `SQLiteConformanceKit().runAll()` | 0 | ELF 64-bit static executable linked (not executed); the same program run on macOS printed `ALL PASSED` |
 
 ## Not run, and open points
 
@@ -175,12 +175,12 @@ hash -r
    file-protection effect on a real data-protected volume is unverified; only the
    open-flag mapping is tested.
 4. **Apple private framework name clash.** macOS ships
-   `/System/Library/PrivateFrameworks/SwiftSQLite.framework`. Its Objective-C-visible
-   class `SwiftSQLite.Connection` clashed with an internal class here (objc runtime
+   `/System/Library/PrivateFrameworks/SQLiteSwift.framework`. Its Objective-C-visible
+   class `SQLiteSwift.Connection` clashed with an internal class here (objc runtime
    warning in test processes). Fixed by giving all internal classes an `SQLite` prefix
    (`c425821`). Apple's current class names are `Connection`, `Statement`,
    `TableBuilder`, `DateFunctions` and two private coders. Future macOS releases could
-   add more names, so the module name `SwiftSQLite` carries a small residual risk.
+   add more names, so the module name `SQLiteSwift` carries a small residual risk.
    The fallback would be renaming the module; the spec currently fixes the name.
 5. **Durability against power loss** is configured (`synchronous=FULL`, optional
    `appleFullFSync`) but can't be proven by tests. The crash-image test covers

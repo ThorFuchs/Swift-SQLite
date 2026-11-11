@@ -2,7 +2,7 @@
 
 /// A SQLite storage-class value, used for bindings and results.
 ///
-/// Consumers that store JSON pass canonical bytes as ``blob(_:)``; SwiftSQLite does
+/// Consumers that store JSON pass canonical bytes as ``blob(_:)``; SQLiteSwift does
 /// not interpret them.
 public enum SQLiteValue: Sendable, Hashable, CustomStringConvertible {
     case null

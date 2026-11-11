@@ -11,11 +11,11 @@ dependencies: [
 ],
 targets: [
     .target(name: "MyStore", dependencies: [
-        .product(name: "SwiftSQLite", package: "Swift-SQLite"),
+        .product(name: "SQLiteSwift", package: "Swift-SQLite"),
     ]),
     .testTarget(name: "MyStoreTests", dependencies: [
         "MyStore",
-        .product(name: "SwiftSQLiteTesting", package: "Swift-SQLite"),
+        .product(name: "SQLiteSwiftTesting", package: "Swift-SQLite"),
     ]),
 ]
 ```
@@ -26,7 +26,7 @@ Migrations are numbered `1, 2, 3, …` without gaps. Each one runs once, in its 
 transaction, which also sets `PRAGMA user_version`.
 
 ```swift
-import SwiftSQLite
+import SQLiteSwift
 
 let migrations = [
     SQLiteMigration(version: 1, name: "tasks", sql: """
@@ -75,7 +75,7 @@ try await database.write { tx throws(SQLiteError) in
 ```
 
 Values pass as ``SQLiteValue``. Store JSON as canonical bytes in a BLOB;
-SwiftSQLite doesn't interpret them.
+SQLiteSwift doesn't interpret them.
 
 ## Compare-and-set
 
@@ -119,7 +119,7 @@ Results are never silently truncated. Too many rows throw
 ## Expiry and time
 
 Expiry helpers read time only from ``SQLiteConfiguration/clock``. Inject
-`SQLiteManualClock` from SwiftSQLiteTesting in tests.
+`SQLiteManualClock` from SQLiteSwiftTesting in tests.
 
 ```swift
 try await database.write { tx throws(SQLiteError) in
@@ -139,7 +139,7 @@ try await database.write { tx throws(SQLiteError) in
 ## Test your store with the conformance kit
 
 ```swift
-import SwiftSQLiteTesting
+import SQLiteSwiftTesting
 import Testing
 
 @Test(arguments: SQLiteConformanceKit.Check.allCases)

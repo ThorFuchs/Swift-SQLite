@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif
@@ -21,8 +21,8 @@ enum ConnectionRole: Sendable, Equatable {
 
     var threadName: String {
         switch self {
-        case .writer: "swiftsqlite.w"
-        case .reader(let index): "swiftsqlite.r\(index)"
+        case .writer: "sqliteswift.w"
+        case .reader(let index): "sqliteswift.r\(index)"
         }
     }
 }
@@ -54,7 +54,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     let cache: SQLiteStatementCache
     /// The job running right now (worker thread only).
     var activeToken: SQLiteJobToken?
-    /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SwiftSQLite itself runs them.
+    /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SQLiteSwift itself runs them.
     var allowTransactionControl = false
     private var busyStart = ContinuousClock.now
     /// Shared with other threads; guards `sqlite3_interrupt`.
@@ -159,7 +159,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     }
 
     fileprivate func authorize(action: Int32) -> Int32 {
-        // SQLITE_TRANSACTION: BEGIN/COMMIT/ROLLBACK are owned by SwiftSQLite.
+        // SQLITE_TRANSACTION: BEGIN/COMMIT/ROLLBACK are owned by SQLiteSwift.
         if action == SQLITE_TRANSACTION && !allowTransactionControl {
             return SQLITE_DENY
         }
@@ -168,7 +168,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
     // MARK: Internal statements
 
-    /// Runs SwiftSQLite's own SQL (transaction control, pragmas). Not cached and not
+    /// Runs SQLiteSwift's own SQL (transaction control, pragmas). Not cached and not
     /// subject to the cancellation check.
     func execInternal(_ sql: String) throws(SQLiteError) {
         let db = try handle()
@@ -178,7 +178,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         guard rc == SQLITE_OK else { throw error(rc) }
     }
 
-    /// Runs SwiftSQLite's own single-row query and returns the first column.
+    /// Runs SQLiteSwift's own single-row query and returns the first column.
     func scalarInternal(_ sql: String) throws(SQLiteError) -> SQLiteValue {
         let db = try handle()
         var statement: OpaquePointer?

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif

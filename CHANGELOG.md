@@ -2,7 +2,7 @@
 
 ## 0.1.0 — candidate (unreleased, untagged)
 
-- `SwiftSQLite`: `SQLiteDatabase` with one `BEGIN IMMEDIATE` writer and a bounded
+- `SQLiteSwift`: `SQLiteDatabase` with one `BEGIN IMMEDIATE` writer and a bounded
   reader pool on WAL snapshot transactions, or a single connection. Each connection
   has a dedicated thread, joined on `close()`.
 - `synchronous=FULL` by default, `NORMAL` as opt-in; writes return after `COMMIT`.
@@ -18,7 +18,7 @@
 - Injectable `SQLiteClock`; expiry helpers `deleteExpired`, `countExpired`, `deadline`.
 - WAL checkpoints (passive, full, restart, truncate).
 - Optional iOS data-protection class.
-- `SwiftSQLiteTesting`: `SQLiteConformanceKit` (8 checks), `SQLiteManualClock`,
+- `SQLiteSwiftTesting`: `SQLiteConformanceKit` (8 checks), `SQLiteManualClock`,
   `SQLiteTemporaryDirectory`, `SQLiteTestLatch`, `SQLiteCrashImage`.
 - Linux: pinned, unmodified SQLite 3.54.1 amalgamation with provenance and SHA-256
   verification. Apple platforms use the system SQLite.

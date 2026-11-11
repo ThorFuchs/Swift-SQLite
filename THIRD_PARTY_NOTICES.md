@@ -5,7 +5,7 @@ replace the terms of the material below.
 
 | Material | Where | Distribution and license |
 | --- | --- | --- |
-| SQLite amalgamation 3.54.1 (`sqlite3.c`, `sqlite3.h`) | `Sources/CSwiftSQLite/` | Vendored byte-for-byte from https://sqlite.org/2026/sqlite-amalgamation-3540100.zip; compiled on Linux only. **Public domain.** Hashes and update steps are in [PROVENANCE.md](Sources/CSwiftSQLite/PROVENANCE.md); `Scripts/verify-amalgamation.sh` checks them. |
+| SQLite amalgamation 3.54.1 (`sqlite3.c`, `sqlite3.h`) | `Sources/CSQLiteSwift/` | Vendored byte-for-byte from https://sqlite.org/2026/sqlite-amalgamation-3540100.zip; compiled on Linux only. **Public domain.** Hashes and update steps are in [PROVENANCE.md](Sources/CSQLiteSwift/PROVENANCE.md); `Scripts/verify-amalgamation.sh` checks them. |
 
 ## SQLite public-domain dedication
 
@@ -19,7 +19,7 @@ authors (https://sqlite.org/copyright.html). The amalgamation header reads:
        May you find forgiveness for yourself and forgive others.
        May you share freely, never taking more than you give.
 
-On Apple platforms, SwiftSQLite links the operating system's SQLite library and
+On Apple platforms, SQLiteSwift links the operating system's SQLite library and
 ships no SQLite code.
 
 The package has no other third-party runtime dependencies.

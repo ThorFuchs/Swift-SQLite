@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if os(Linux)
-internal import CSwiftSQLite
+internal import CSQLiteSwift
 #endif
 #if canImport(Darwin)
 import Darwin
@@ -168,7 +168,7 @@ private func setCurrentThreadName(_ name: String) {
     _ = pthread_setname_np(name)
     #elseif os(Linux)
     // glibc hides pthread_setname_np without _GNU_SOURCE; use the C wrapper.
-    _ = cswiftsqlite_set_current_thread_name(name)
+    _ = csqliteswift_set_current_thread_name(name)
     #endif
 }
 
@@ -178,7 +178,7 @@ func currentThreadName() -> String {
     #if canImport(Darwin)
     _ = pthread_getname_np(pthread_self(), &buffer, buffer.count)
     #elseif os(Linux)
-    _ = cswiftsqlite_get_current_thread_name(&buffer, buffer.count)
+    _ = csqliteswift_get_current_thread_name(&buffer, buffer.count)
     #endif
     return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
 }

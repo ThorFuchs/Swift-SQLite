@@ -13,7 +13,7 @@ public struct SQLiteMigration: Sendable {
 
     /// Runs the migration's body in `transaction` (without touching `user_version`).
     ///
-    /// SwiftSQLite calls this during ``SQLiteDatabase/open(_:migrations:)``. It is
+    /// SQLiteSwift calls this during ``SQLiteDatabase/open(_:migrations:)``. It is
     /// public so test kits can wrap migrations.
     public func apply(in transaction: SQLiteTransaction) throws(SQLiteError) {
         try body(transaction)
