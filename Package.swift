@@ -31,7 +31,7 @@ let package = Package(
         .target(
             name: "CSwiftSQLite",
             exclude: ["sqlite3.c", "PROVENANCE.md"],
-            sources: ["shim.c"],
+            sources: ["shim.c", "thread.c"],
             cSettings: amalgamationDefines,
             linkerSettings: [
                 .linkedLibrary("pthread", .when(platforms: [.linux])),
