@@ -9,7 +9,7 @@ internal import SQLite3
 /// A bounded least-recently-used cache of prepared statements for one connection.
 ///
 /// Used only on the connection's worker thread. Evicted statements are finalized.
-final class StatementCache {
+final class SQLiteStatementCache {
     let capacity: Int
     private var statements: [String: OpaquePointer] = [:]
     /// Least recently used first.

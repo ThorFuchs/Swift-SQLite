@@ -23,10 +23,10 @@ public final class SQLiteTransaction {
     }
 
     public let kind: Kind
-    let core: ConnectionCore
+    let core: SQLiteConnectionCore
     private var isValid = true
 
-    init(core: ConnectionCore, kind: Kind) {
+    init(core: SQLiteConnectionCore, kind: Kind) {
         self.core = core
         self.kind = kind
     }

@@ -44,7 +44,7 @@ public struct SQLiteMigration: Sendable {
     }
 }
 
-extension ConnectionCore {
+extension SQLiteConnectionCore {
     /// Refuses databases newer than the known migrations, without writing anything.
     func checkSchemaVersion(supported: Int) throws(SQLiteError) -> Int {
         guard case .integer(let raw) = try scalarInternal("PRAGMA user_version") else { return 0 }

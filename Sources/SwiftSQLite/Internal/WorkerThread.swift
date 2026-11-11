@@ -12,7 +12,7 @@ import Musl
 ///
 /// Jobs run in FIFO order. ``stopAndJoin()`` lets queued jobs finish, then joins the
 /// thread. The cooperative thread pool never runs SQLite calls.
-final class WorkerThread: @unchecked Sendable {
+final class SQLiteWorkerThread: @unchecked Sendable {
     typealias Job = @Sendable () -> Void
 
     private let shared: WorkerShared
@@ -114,7 +114,7 @@ private func workerEntry(_ context: UnsafeMutableRawPointer?) -> UnsafeMutableRa
 private final class WorkerShared: @unchecked Sendable {
     let mutex: UnsafeMutablePointer<pthread_mutex_t>
     let condition: UnsafeMutablePointer<pthread_cond_t>
-    var jobs: [WorkerThread.Job] = []
+    var jobs: [SQLiteWorkerThread.Job] = []
     var stopping = false
     var exited = false
     let name: String

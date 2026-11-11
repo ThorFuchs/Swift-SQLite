@@ -7,7 +7,7 @@ import Synchronization
 /// Callers wait in FIFO order. A waiting caller whose task is cancelled leaves the
 /// queue with ``SQLiteError/interrupted``. ``drain()`` closes the pool: waiters fail
 /// with ``SQLiteError/closed`` and it returns once every slot is back.
-final class SlotPool: Sendable {
+final class SQLiteSlotPool: Sendable {
     private struct Waiter {
         let id: UInt64
         let continuation: CheckedContinuation<Result<Int, SQLiteError>, Never>
