@@ -103,4 +103,5 @@ swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0
 - Apple's system SQLite keeps the `-wal` file after the last connection closes
   (truncated to 0 bytes). Linux deletes it.
 
-See [ACCEPTANCE.md](ACCEPTANCE.md) for the 0.1.0 requirement-by-requirement evidence.
+See [ACCEPTANCE.md](ACCEPTANCE.md) for the 0.1.0 requirement-by-requirement evidence
+and [ROADMAP.md](ROADMAP.md) for planned profiles and capabilities.
