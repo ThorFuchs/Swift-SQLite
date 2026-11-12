@@ -25,7 +25,7 @@ struct DownstreamTests {
                     tx.core.failNextCommitForTesting = true
                 }
             }
-            guard case .commitOutcomeUnknown(let underlying) = error else {
+            guard let error, error.code == .commitOutcomeUnknown, let underlying = error.underlying else {
                 Issue.record("expected commitOutcomeUnknown, got \(String(describing: error))"); return
             }
             #expect(underlying.resultCode?.primary == .constraint)  // SQLITE_CONSTRAINT_COMMITHOOK
@@ -56,7 +56,7 @@ struct DownstreamTests {
                     try tx.execute("INSERT INTO deferred_child (id, parent) VALUES (1, 999)")
                 }
             }
-            guard case .constraint(let details) = error else {
+            guard let details = details(error, .constraint) else {
                 Issue.record("expected .constraint, got \(String(describing: error))"); return
             }
             #expect(details.code.rawValue == 787)  // SQLITE_CONSTRAINT_FOREIGNKEY, reported by COMMIT
@@ -127,7 +127,7 @@ struct DownstreamTests {
             try await SQLiteDatabase.open(
                 SQLiteConfiguration(path: directory.file("missing/dir/x.sqlite")), migrations: [])
         }
-        guard case .cantOpen(let details) = error else {
+        guard let details = details(error, .cantOpen) else {
             Issue.record("expected .cantOpen, got \(String(describing: error))"); return
         }
         #expect(details.code.primary == .cantOpen)
@@ -145,19 +145,19 @@ struct DownstreamTests {
         let error = await caught {
             try await SQLiteDatabase.open(SQLiteConfiguration(path: path), migrations: sampleMigrations)
         }
-        guard case .readOnly = error else {
+        guard code(error) == .readOnly else {
             Issue.record("expected .readOnly, got \(String(describing: error))"); return
         }
     }
 
     @Test("I/O and can't-open result codes map to typed errors with extended codes")
     func ioErrorMapping() {
-        guard case .ioError(let fsync) = SQLiteError.make(code: 1034, message: "fsync") else {  // SQLITE_IOERR_FSYNC
+        guard let fsync = details(SQLiteError.make(code: 1034, message: "fsync"), .ioError) else {  // SQLITE_IOERR_FSYNC
             Issue.record("IOERR_FSYNC"); return
         }
         #expect(fsync.code.rawValue == 1034 && fsync.code.primary == .ioError)
-        guard case .cantOpen = SQLiteError.make(code: 14, message: "x") else { Issue.record("CANTOPEN"); return }
-        #expect(SQLiteError.commitOutcomeUnknown(.ioError(fsync)).resultCode?.rawValue == 1034)
+        guard SQLiteError.make(code: 14, message: "x").code == .cantOpen else { Issue.record("CANTOPEN"); return }
+        #expect(SQLiteError.commitOutcomeUnknown(.make(code: 1034, message: "fsync")).resultCode?.rawValue == 1034)
     }
 
     // MARK: Guarded compare-and-set
@@ -263,13 +263,13 @@ struct DownstreamTests {
                                      after: SQLiteKeysetCursor(values: [1]), limit: 5)
                 }
             }
-            guard case .invalidArgument = badCursor else { Issue.record("got \(String(describing: badCursor))"); return }
+            guard code(badCursor) == .invalidArgument else { Issue.record("got \(String(describing: badCursor))"); return }
             let badLimit = await caught {
                 try await database.read { (tx) throws(SQLiteError) in
                     try tx.queryPage(table: "tasks", columns: ["id"], keyColumns: ["id"], limit: 0)
                 }
             }
-            guard case .invalidArgument = badLimit else { Issue.record("got \(String(describing: badLimit))"); return }
+            guard code(badLimit) == .invalidArgument else { Issue.record("got \(String(describing: badLimit))"); return }
         }
     }
 

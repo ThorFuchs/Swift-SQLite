@@ -53,3 +53,12 @@ func withDatabase<T>(
         throw error
     }
 }
+
+/// The code of an error, or `nil`.
+func code(_ error: SQLiteError?) -> SQLiteError.Code? { error?.code }
+
+/// The SQLite details of an error if it has the given code.
+func details(_ error: SQLiteError?, _ expected: SQLiteError.Code) -> SQLiteErrorDetails? {
+    guard let error, error.code == expected else { return nil }
+    return error.details
+}

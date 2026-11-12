@@ -159,7 +159,7 @@ struct ConcurrencyTests {
             latch.open()
             _ = try await holder.value
             await other.close()
-            guard case .busy(let details) = error else { Issue.record("got \(String(describing: error))"); return }
+            guard let details = details(error, .busy) else { Issue.record("got \(String(describing: error))"); return }
             #expect(details.code.primary == .busy)
             #expect(elapsed >= .milliseconds(80) && elapsed < .seconds(3), "elapsed \(elapsed)")
         }

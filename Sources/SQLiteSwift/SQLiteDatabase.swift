@@ -314,8 +314,7 @@ extension SQLiteConnectionCore {
         // SQLite silently opens a non-writable file read-only; fail at open instead of
         // at the first write, so hosts can tell "not writable" from "busy".
         if sqlite3_db_readonly(try handle(), "main") == 1 {
-            throw .readOnly(SQLiteErrorDetails(
-                code: .readOnly, message: "the database file is not writable: \(path)"))
+            throw .readOnly("the database file is not writable: \(path)")
         }
         if case .file = configuration.storage {
             try execInternal("PRAGMA journal_mode = WAL")

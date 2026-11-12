@@ -55,14 +55,14 @@ struct LimitsTests {
                     try tx.query("SELECT 1", limits: SQLiteQueryLimits(maxBytes: 4001))
                 }
             }
-            guard case .invalidArgument = aboveCap else { Issue.record("got \(String(describing: aboveCap))"); return }
+            guard code(aboveCap) == .invalidArgument else { Issue.record("got \(String(describing: aboveCap))"); return }
             // The hard cap is SQLITE_LIMIT_LENGTH: SQLite refuses bigger values itself.
             let tooBig = await caught {
                 try await database.read { (tx) throws(SQLiteError) in
                     try tx.query("SELECT zeroblob(5000)", limits: SQLiteQueryLimits(maxBytes: 4000))
                 }
             }
-            guard case .tooBig = tooBig else { Issue.record("got \(String(describing: tooBig))"); return }
+            guard code(tooBig) == .tooBig else { Issue.record("got \(String(describing: tooBig))"); return }
             // Bound values above the hard cap are refused before reaching SQLite.
             let bigBind = await caught {
                 try await database.write { (tx) throws(SQLiteError) in
@@ -115,7 +115,7 @@ struct LimitsTests {
                     try tx.readBlob(table: "items; DROP TABLE items", column: "payload", keyColumn: "id", key: 1)
                 }
             }
-            guard case .sqlite = injection else { Issue.record("got \(String(describing: injection))"); return }
+            guard code(injection) == .sqlite else { Issue.record("got \(String(describing: injection))"); return }
         }
     }
 

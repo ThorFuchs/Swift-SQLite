@@ -244,7 +244,7 @@ private struct Context {
             await database.close()
             throw ConformanceFailure(message: "a failing migration did not fail the open")
         } catch let error as SQLiteError {
-            guard case .migrationFailed(let failedVersion, _, _) = error, failedVersion == n + 2 else {
+            guard error.code == .migrationFailed, error.migrationVersion == n + 2 else {
                 throw ConformanceFailure(message: "expected migrationFailed(version: \(n + 2)), got \(error)")
             }
         }
@@ -277,7 +277,7 @@ private struct Context {
             await reopened.close()
             throw ConformanceFailure(message: "a database at version \(n + 1) was opened by code that knows \(n)")
         } catch let error as SQLiteError {
-            guard case .schemaTooNew(let found, let supported) = error, found == n + 1, supported == n else {
+            guard error.code == .schemaTooNew, error.databaseVersion == n + 1, error.supportedVersion == n else {
                 throw ConformanceFailure(message: "expected schemaTooNew(\(n + 1), \(n)), got \(error)")
             }
         }
@@ -370,7 +370,7 @@ private struct Context {
         } catch {
             observed = error
         }
-        guard case .constraint(let details) = observed else {
+        guard let observed, observed.code == .constraint, let details = observed.details else {
             await database.close()
             throw ConformanceFailure(message: "a COMMIT rejected by a deferred foreign key gave \(String(describing: observed)), expected .constraint")
         }
@@ -416,7 +416,7 @@ private struct Context {
         let elapsed = ContinuousClock.now - start
         latch.open()
         try await holding.value
-        guard case .busy = observed else {
+        guard observed?.code == .busy else {
             throw ConformanceFailure(message: "expected .busy while another connection writes, got \(String(describing: observed))")
         }
         try require(elapsed >= timeout * 0.8, "busy came after \(elapsed), before the \(timeout) timeout")
@@ -444,7 +444,7 @@ private struct Context {
         reading.cancel()
         let readResult = await reading.result
         let readLatency = ContinuousClock.now - cancelledAt
-        guard case .failure(let readError) = readResult, case .interrupted? = readError as? SQLiteError else {
+        guard case .failure(let readError) = readResult, (readError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a cancelled read returned \(readResult), expected .interrupted")
         }
@@ -460,7 +460,7 @@ private struct Context {
         try await Task.sleep(for: .milliseconds(150))
         writing.cancel()
         let writeResult = await writing.result
-        guard case .failure(let writeError) = writeResult, case .interrupted? = writeError as? SQLiteError else {
+        guard case .failure(let writeError) = writeResult, (writeError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a cancelled write returned \(writeResult), expected .interrupted")
         }
@@ -475,7 +475,7 @@ private struct Context {
             }
         }
         let preResult = await preCancelled.result
-        guard case .failure(let preError) = preResult, case .interrupted? = preError as? SQLiteError else {
+        guard case .failure(let preError) = preResult, (preError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a pre-cancelled write returned \(preResult), expected .interrupted")
         }
@@ -595,7 +595,7 @@ private struct Context {
         } catch {
             observed = error
         }
-        guard case .full(let details) = observed else {
+        guard let observed, observed.code == .full, let details = observed.details else {
             await database.close()
             throw ConformanceFailure(message: "expected .full with max_page_count reached, got \(String(describing: observed))")
         }

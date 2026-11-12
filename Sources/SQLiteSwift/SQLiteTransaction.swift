@@ -48,8 +48,7 @@ public final class SQLiteTransaction {
 
     private func checkWritable(_ statement: OpaquePointer) throws(SQLiteError) {
         if kind == .read, sqlite3_stmt_readonly(statement) == 0 {
-            throw .readOnly(SQLiteErrorDetails(
-                code: .readOnly, message: "a read transaction cannot run statements that write"))
+            throw .readOnly("a read transaction cannot run statements that write")
         }
     }
 
@@ -108,8 +107,7 @@ public final class SQLiteTransaction {
                 guard let statement else { continue }  // whitespace or comment
                 defer { sqlite3_finalize(statement) }
                 if kind == .read, sqlite3_stmt_readonly(statement) == 0 {
-                    failure = .readOnly(SQLiteErrorDetails(
-                        code: .readOnly, message: "a read transaction cannot run statements that write"))
+                    failure = .readOnly("a read transaction cannot run statements that write")
                     return
                 }
                 while true {
