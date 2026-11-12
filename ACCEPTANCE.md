@@ -79,7 +79,19 @@ has 9 checks (new: `commitFailure`).
 
 ### Round 2 CI (PR #2)
 
-CI_ROUND2_PLACEHOLDER
+| Run | Commit | Job | Result |
+| --- | --- | --- | --- |
+| 43162483401 | `3b5f84b` | macOS on the self-hosted runner `macos27-thorstens-macbook-pro-swift-sqlite` | passed, attempt 1; **58 tests in 7 suites passed**; iOS cross-compiles and DocC succeeded |
+| 43162483335 | `3b5f84b` | Linux / x86_64 (Swift 6.4.0, Ubuntu 24.04) | passed, attempt 1; **58 tests in 7 suites passed** |
+| 43162483335 | `3b5f84b` | Linux / arm64 (Swift 6.4.0, Ubuntu 24.04) | passed, attempt 1; **58 tests in 7 suites passed** |
+
+`3b5f84b` has the same code as the verified tree; it only adds this report's round 2
+section. Later commits on PR #2 only edit this file.
+
+Limit: the Linux container runs as root, which ignores file permissions, so *A
+database file that isn't writable fails at open with .readOnly* returns early there.
+It ran and passed on macOS and on the iOS simulator. The `fullfsync` assertions apply
+only on Apple platforms and were exercised there.
 
 ## Summary
 
