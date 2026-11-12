@@ -7,7 +7,7 @@ transactions.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", .upToNextMinor(from: "0.2.0")),
+    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", .upToNextMinor(from: "0.9.0")),
 ],
 targets: [
     .target(name: "MyStore", dependencies: [

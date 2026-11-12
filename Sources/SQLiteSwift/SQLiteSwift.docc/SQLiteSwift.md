@@ -4,9 +4,9 @@ Durable, bounded SQLite persistence for Swift concurrency, with no package depen
 
 ## Overview
 
-SQLiteSwift is the shared SQLite base for domain stores such as MCP task stores
-and content-collection stores. It provides the parts every store needs and none of
-the domain logic:
+SQLiteSwift is a foundation for persistent stores built on SQLite, such as task
+queues, caches, document and content stores. It provides the parts every store needs
+and none of the domain logic:
 
 - One writer connection (`BEGIN IMMEDIATE`) and a bounded pool of reader connections
   on WAL snapshot transactions. A single connection is also supported.
