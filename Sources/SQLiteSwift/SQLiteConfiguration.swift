@@ -128,8 +128,10 @@ public struct SQLiteConfiguration: Sendable {
     public var foreignKeys: Bool
     /// `PRAGMA wal_autocheckpoint` in pages. `0` turns automatic checkpoints off. Default 1000.
     public var walAutoCheckpointPages: Int
-    /// `PRAGMA fullfsync` on Apple platforms: sync with `F_FULLFSYNC`, which also
-    /// flushes the drive's write cache. Slower. Default `false` (SQLite's default).
+    /// `PRAGMA fullfsync` and `PRAGMA checkpoint_fullfsync` on Apple platforms: sync
+    /// with `F_FULLFSYNC`, which also flushes the drive's write cache, so a returned
+    /// write survives power loss. Default `true` on Apple platforms (opt out with
+    /// `false` for speed); ignored on Linux. Both settings are read back after opening.
     public var appleFullFSync: Bool
     /// The iOS data-protection class for new files. Ignored outside iOS. Default `nil`
     /// (the app's default class).
@@ -146,7 +148,7 @@ public struct SQLiteConfiguration: Sendable {
         self.limits = SQLiteLimits()
         self.foreignKeys = true
         self.walAutoCheckpointPages = 1000
-        self.appleFullFSync = false
+        self.appleFullFSync = true
         self.fileProtection = nil
         self.clock = SQLiteSystemClock()
     }

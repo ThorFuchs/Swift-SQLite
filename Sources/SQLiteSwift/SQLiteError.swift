@@ -26,6 +26,7 @@ public struct SQLiteResultCode: RawRepresentable, Sendable, Hashable, CustomStri
     public static let ioError = SQLiteResultCode(rawValue: 10)
     public static let corrupt = SQLiteResultCode(rawValue: 11)
     public static let full = SQLiteResultCode(rawValue: 13)
+    public static let cantOpen = SQLiteResultCode(rawValue: 14)
     public static let tooBig = SQLiteResultCode(rawValue: 18)
     public static let constraint = SQLiteResultCode(rawValue: 19)
     public static let notADatabase = SQLiteResultCode(rawValue: 26)
@@ -54,8 +55,20 @@ public enum SQLiteValueKind: String, Sendable, Hashable {
 /// Every error thrown by SQLiteSwift.
 ///
 /// SQLite result codes that callers usually need to handle (busy, constraint,
-/// corrupt, full, interrupted) have their own cases. Every other result code is
-/// wrapped in ``sqlite(_:)``.
+/// corrupt, full, read-only, can't open, I/O, interrupted) have their own cases.
+/// Every other result code is wrapped in ``sqlite(_:)``.
+///
+/// ## Commit outcomes
+///
+/// When a write throws, whether its transaction was committed depends on the case:
+/// - ``commitOutcomeUnknown(_:)``: `COMMIT` was issued and did not report success,
+///   and the transaction is no longer open. The data may or may not be durable.
+///   Resolve it with a fresh read (for example of an idempotency key written in the
+///   same transaction) after the call has returned.
+/// - Every other case: the transaction was not committed. Either the failure happened
+///   before `COMMIT` was issued, or `COMMIT` failed while the transaction was still
+///   open on the connection (for example a deferred foreign-key violation), and it was
+///   then rolled back.
 public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     /// The database stayed locked (`SQLITE_BUSY` or `SQLITE_LOCKED`) after the
     /// configured busy timeout ran out.
@@ -68,6 +81,12 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     case full(SQLiteErrorDetails)
     /// A write was attempted on a read-only connection or file (`SQLITE_READONLY`).
     case readOnly(SQLiteErrorDetails)
+    /// The database file could not be opened (`SQLITE_CANTOPEN`), for example because
+    /// its directory doesn't exist or isn't accessible.
+    case cantOpen(SQLiteErrorDetails)
+    /// An operating-system I/O error (`SQLITE_IOERR`). The extended code in the details
+    /// says which operation failed (for example `SQLITE_IOERR_FSYNC`).
+    case ioError(SQLiteErrorDetails)
     /// A string, BLOB or row exceeded SQLite's length limit (`SQLITE_TOOBIG`).
     case tooBig(SQLiteErrorDetails)
     /// The operation stopped because the calling task was cancelled.
@@ -94,9 +113,20 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     case invalidArgument(String)
     /// The API was used incorrectly (for example a transaction used after its closure returned).
     case misuse(String)
-    /// A migration failed. The migration's transaction was rolled back; earlier
-    /// migrations stay committed.
+    /// A migration failed. The migration's transaction was rolled back, unless the
+    /// underlying error is ``commitOutcomeUnknown(_:)``; earlier migrations stay
+    /// committed.
     indirect case migrationFailed(version: Int, name: String, underlying: SQLiteError)
+    /// `COMMIT` was issued but did not report success, and the transaction is no longer
+    /// open, so SQLiteSwift cannot tell whether it was committed.
+    ///
+    /// Do not treat this as "not committed". Resolve it with a fresh read after the
+    /// call returned, for example of an idempotency key written in the same transaction.
+    /// The associated error is what `COMMIT` reported.
+    indirect case commitOutcomeUnknown(SQLiteError)
+    /// A setting SQLiteSwift applied was not in effect when read back (for example
+    /// `journal_mode` or `fullfsync`). The database was closed again.
+    case settingMismatch(setting: String, expected: String, actual: String)
     /// Any other SQLite result code.
     case sqlite(SQLiteErrorDetails)
 
@@ -107,6 +137,8 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         case .corrupt(let d): "database is corrupt: \(d)"
         case .full(let d): "database or disk is full: \(d)"
         case .readOnly(let d): "read-only: \(d)"
+        case .cantOpen(let d): "cannot open database: \(d)"
+        case .ioError(let d): "I/O error: \(d)"
         case .tooBig(let d): "value too big: \(d)"
         case .interrupted: "operation interrupted by task cancellation"
         case .schemaTooNew(let found, let supported):
@@ -121,6 +153,10 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         case .misuse(let reason): "misuse: \(reason)"
         case .migrationFailed(let version, let name, let underlying):
             "migration \(version) (\(name)) failed: \(underlying)"
+        case .commitOutcomeUnknown(let underlying):
+            "commit outcome unknown (COMMIT reported: \(underlying))"
+        case .settingMismatch(let setting, let expected, let actual):
+            "setting \(setting) is \(actual), expected \(expected)"
         case .sqlite(let d): "SQLite error: \(d)"
         }
     }
@@ -129,10 +165,11 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     public var resultCode: SQLiteResultCode? {
         switch self {
         case .busy(let d), .constraint(let d), .corrupt(let d), .full(let d),
-            .readOnly(let d), .tooBig(let d), .sqlite(let d):
+            .readOnly(let d), .tooBig(let d), .cantOpen(let d), .ioError(let d), .sqlite(let d):
             d.code
         case .interrupted: .interrupt
-        case .migrationFailed(_, _, let underlying): underlying.resultCode
+        case .migrationFailed(_, _, let underlying), .commitOutcomeUnknown(let underlying):
+            underlying.resultCode
         default: nil
         }
     }
@@ -147,6 +184,8 @@ public enum SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         case .full: return .full(details)
         case .readOnly: return .readOnly(details)
         case .tooBig: return .tooBig(details)
+        case .cantOpen: return .cantOpen(details)
+        case .ioError: return .ioError(details)
         case .interrupt: return .interrupted
         default: return .sqlite(details)
         }
