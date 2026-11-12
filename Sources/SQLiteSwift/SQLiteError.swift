@@ -309,7 +309,7 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     /// Whether the operation stopped because it was cancelled or ran out of time or
     /// instructions (``Code/interrupted``, ``Code/deadlineExceeded`` or
     /// ``Code/instructionLimitExceeded``). Its transaction was rolled back.
-    public var isStop: Bool {
+    public var isInterruption: Bool {
         code == .interrupted || code == .deadlineExceeded || code == .instructionLimitExceeded
     }
 

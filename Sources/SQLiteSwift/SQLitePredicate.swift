@@ -12,25 +12,77 @@
 /// let notTerminal: SQLitePredicate = .notIn("status", ["completed", "failed", "cancelled"])
 /// let mine: SQLitePredicate = .and([.equals("owner", .text(owner)), notTerminal])
 /// ```
-public indirect enum SQLitePredicate: Sendable, Hashable {
-    case equals(SQLiteIdentifier, SQLiteValue)
-    case notEquals(SQLiteIdentifier, SQLiteValue)
-    case lessThan(SQLiteIdentifier, SQLiteValue)
-    case lessThanOrEqual(SQLiteIdentifier, SQLiteValue)
-    case greaterThan(SQLiteIdentifier, SQLiteValue)
-    case greaterThanOrEqual(SQLiteIdentifier, SQLiteValue)
+///
+/// Predicates are built with the static functions below. `SQLitePredicate` is a struct,
+/// so new operators can be added in minor releases.
+public struct SQLitePredicate: Sendable, Hashable {
+    indirect enum Node: Sendable, Hashable {
+        case equals(SQLiteIdentifier, SQLiteValue)
+        case notEquals(SQLiteIdentifier, SQLiteValue)
+        case lessThan(SQLiteIdentifier, SQLiteValue)
+        case lessThanOrEqual(SQLiteIdentifier, SQLiteValue)
+        case greaterThan(SQLiteIdentifier, SQLiteValue)
+        case greaterThanOrEqual(SQLiteIdentifier, SQLiteValue)
+        case isIn(SQLiteIdentifier, [SQLiteValue])
+        case notIn(SQLiteIdentifier, [SQLiteValue])
+        case isNull(SQLiteIdentifier)
+        case isNotNull(SQLiteIdentifier)
+        case and([SQLitePredicate])
+        case or([SQLitePredicate])
+        case not(SQLitePredicate)
+    }
+
+    let node: Node
+
+    private init(_ node: Node) { self.node = node }
+
+    /// The column equals the value.
+    public static func equals(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.equals(column, value))
+    }
+    /// The column is not NULL and differs from the value.
+    public static func notEquals(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.notEquals(column, value))
+    }
+    public static func lessThan(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.lessThan(column, value))
+    }
+    public static func lessThanOrEqual(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.lessThanOrEqual(column, value))
+    }
+    public static func greaterThan(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.greaterThan(column, value))
+    }
+    public static func greaterThanOrEqual(_ column: SQLiteIdentifier, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.greaterThanOrEqual(column, value))
+    }
     /// The column equals one of the values. An empty list matches nothing.
-    case isIn(SQLiteIdentifier, [SQLiteValue])
+    public static func isIn(_ column: SQLiteIdentifier, _ values: [SQLiteValue]) -> SQLitePredicate {
+        SQLitePredicate(.isIn(column, values))
+    }
     /// The column is not NULL and equals none of the values. An empty list matches every
     /// non-NULL value.
-    case notIn(SQLiteIdentifier, [SQLiteValue])
-    case isNull(SQLiteIdentifier)
-    case isNotNull(SQLiteIdentifier)
+    public static func notIn(_ column: SQLiteIdentifier, _ values: [SQLiteValue]) -> SQLitePredicate {
+        SQLitePredicate(.notIn(column, values))
+    }
+    public static func isNull(_ column: SQLiteIdentifier) -> SQLitePredicate {
+        SQLitePredicate(.isNull(column))
+    }
+    public static func isNotNull(_ column: SQLiteIdentifier) -> SQLitePredicate {
+        SQLitePredicate(.isNotNull(column))
+    }
     /// All conditions hold. An empty list is true.
-    case and([SQLitePredicate])
+    public static func and(_ parts: [SQLitePredicate]) -> SQLitePredicate {
+        SQLitePredicate(.and(parts))
+    }
     /// At least one condition holds. An empty list is false.
-    case or([SQLitePredicate])
-    case not(SQLitePredicate)
+    public static func or(_ parts: [SQLitePredicate]) -> SQLitePredicate {
+        SQLitePredicate(.or(parts))
+    }
+    /// The condition does not hold.
+    public static func not(_ inner: SQLitePredicate) -> SQLitePredicate {
+        SQLitePredicate(.not(inner))
+    }
 
     /// The most values one ``isIn(_:_:)`` or ``notIn(_:_:)`` may list.
     public static let maxListCount = 1000
@@ -69,7 +121,7 @@ public indirect enum SQLitePredicate: Sendable, Hashable {
             let placeholders = Array(repeating: "?", count: values.count).joined(separator: ", ")
             return "(\(quoted) \(negated ? "NOT IN" : "IN") (\(placeholders)))"
         }
-        switch self {
+        switch node {
         case .equals(let c, let v): return try comparison(c, "=", v)
         case .notEquals(let c, let v): return try comparison(c, "<>", v)
         case .lessThan(let c, let v): return try comparison(c, "<", v)

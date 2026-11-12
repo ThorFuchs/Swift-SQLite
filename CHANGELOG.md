@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.0 — unreleased
+
+Release candidate for 1.0.0: the API is frozen, and the repository is ready for
+public use.
+
+### Breaking changes
+
+- `SQLitePredicate` is a struct instead of an enum, so operators can be added in 1.x.
+  Predicates are built with the same spellings (`.equals`, `.notIn`, `.and`, …);
+  only code that pattern-matched on predicate cases changes.
+- `SQLiteError.isStop` is renamed `isInterruption`.
+
+### Added
+
+- `SQLiteSynchronous.extra` (`PRAGMA synchronous=EXTRA`).
+- Community files: SECURITY.md (private vulnerability reporting), CONTRIBUTING.md,
+  CODE_OF_CONDUCT.md, issue forms, a pull request template, CODEOWNERS.
+- CI: Thread Sanitizer on macOS and Linux, Address Sanitizer on Linux, an API-breakage
+  check against the latest release (`Scripts/check-api.sh`), a GitHub-hosted macOS
+  job so pull requests from forks get macOS coverage, and Dependabot for GitHub
+  Actions.
+- `.spi.yml` for the Swift Package Index (documentation for both products).
+- README for public use, with the versioning policy.
+
+### Changed
+
+- Enums that will never gain cases say so in their documentation.
+- The 0.1.0 acceptance record moved to `Documentation/Acceptance-0.1.0.md`.
+
 ## 0.2.0 — 2026-11-12
 
 Truthful and bounded. This release changes the error and conformance-kit APIs so

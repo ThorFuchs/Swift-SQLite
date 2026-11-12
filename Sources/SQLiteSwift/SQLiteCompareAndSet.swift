@@ -3,6 +3,8 @@
 /// The result of ``SQLiteTransaction/compareAndSet(table:idColumn:versionColumn:id:expectedVersion:assignments:alsoRequire:)``.
 ///
 /// A conflict is a value, not an error, so callers decide what it means.
+///
+/// The cases are complete; no case will be added.
 public enum SQLiteCompareAndSetResult: Sendable, Hashable {
     /// The row had the expected version and was updated; it now has `newVersion`.
     case updated(newVersion: Int64)

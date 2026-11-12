@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// The `synchronous` setting for every connection.
+///
+/// `OFF` is deliberately not offered: it gives up durability. The cases are complete.
 public enum SQLiteSynchronous: String, Sendable, Hashable {
     /// `PRAGMA synchronous=FULL`, the default. In WAL mode, every commit syncs the WAL,
     /// so a committed transaction survives power loss.
@@ -8,11 +10,24 @@ public enum SQLiteSynchronous: String, Sendable, Hashable {
     /// `PRAGMA synchronous=NORMAL`, an explicit opt-in. In WAL mode, the most recent
     /// commits can roll back after power loss or an OS crash (not after a process crash).
     case normal
+    /// `PRAGMA synchronous=EXTRA`. Like `FULL`; in rollback-journal mode it also syncs
+    /// the directory after the journal is deleted. In WAL mode it behaves like `FULL`.
+    case extra
 
     var pragmaValue: String {
         switch self {
         case .full: "FULL"
         case .normal: "NORMAL"
+        case .extra: "EXTRA"
+        }
+    }
+
+    /// The value `PRAGMA synchronous` reads back.
+    var level: Int {
+        switch self {
+        case .normal: 1
+        case .full: 2
+        case .extra: 3
         }
     }
 }
@@ -20,7 +35,8 @@ public enum SQLiteSynchronous: String, Sendable, Hashable {
 /// The iOS data-protection class for the database, WAL and shared-memory files.
 ///
 /// It is passed to SQLite's `SQLITE_OPEN_FILEPROTECTION_*` open flags. It applies on
-/// iOS only and is ignored on macOS and Linux.
+/// iOS only and is ignored on macOS and Linux. These are Apple's four protection
+/// classes; the cases are complete.
 public enum SQLiteFileProtection: String, Sendable, Hashable {
     /// Readable only while the device is unlocked.
     case complete

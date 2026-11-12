@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code (and schema) that shows the problem.
+      render: swift
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Swift-SQLite version
+      placeholder: "0.9.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [macOS, iOS, Linux (x86_64), Linux (arm64)]
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: Swift and OS versions
+      placeholder: "Swift 6.4.2, macOS 27.2"
+  - type: textarea
+    id: settings
+    attributes:
+      label: Effective settings (optional)
+      description: The output of `try await database.effectiveSettings()`.
