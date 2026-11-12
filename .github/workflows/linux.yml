@@ -47,3 +47,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
           path: .build/ci/
+
+  sanitizers:
+    name: Linux / sanitizers (x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: swift@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Test with Thread Sanitizer
+        run: swift test --sanitize=thread --scratch-path .build/tsan
+      - name: Test with Address Sanitizer
+        run: swift test --sanitize=address --scratch-path .build/asan

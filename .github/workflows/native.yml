@@ -32,6 +32,8 @@ jobs:
           persist-credentials: false
           # Removes untracked files, including a previous run's .build, before checkout.
           clean: true
+          # Tags are needed for the API-breakage check.
+          fetch-depth: 0
       - name: Toolchain
         run: |
           xcodebuild -version
@@ -46,6 +48,10 @@ jobs:
           xcrun swift build -c release --scratch-path .build/release
       - name: Test (macOS)
         run: mkdir -p .build/ci && xcrun swift test --xunit-output .build/ci/xunit.xml
+      - name: Test with Thread Sanitizer
+        run: xcrun swift test --sanitize=thread --scratch-path .build/tsan
+      - name: API breakage check against the latest tag
+        run: Scripts/check-api.sh
       - name: Cross-compile for iOS device (arm64-apple-ios18.0)
         run: |
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
@@ -71,3 +77,32 @@ jobs:
       - name: Remove build output
         if: always()
         run: rm -rf .build
+
+  macos-hosted:
+    # GitHub-hosted macOS with the Swift 6.4 toolchain from swift.org. It runs for every
+    # pull request, including forks, so outside contributions get macOS coverage
+    # without using the self-hosted runner.
+    name: macOS (GitHub-hosted) / build and test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Swift 6.4 with swiftly
+        run: |
+          curl -fsSL -o swiftly.pkg https://download.swift.org/swiftly/darwin/swiftly.pkg
+          installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+          ~/.swiftly/bin/swiftly init --quiet-shell-followup --assume-yes --skip-install
+          . ~/.swiftly/env.sh
+          swiftly install --use --assume-yes 6.4.2
+          echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
+          rm swiftly.pkg
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: Build and test
+        run: |
+          swift build --build-tests
+          swift test
