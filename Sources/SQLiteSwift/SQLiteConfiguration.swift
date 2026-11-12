@@ -100,6 +100,46 @@ public struct SQLiteQueryLimits: Sendable, Hashable {
     }
 }
 
+/// Bounds on the time and work of one operation (one `read`, `write` or
+/// `writeOrRollback` call). `nil` fields are unbounded.
+///
+/// When a bound is reached, SQLiteSwift stops the running statement, rolls the
+/// transaction back and throws ``SQLiteError/Code/deadlineExceeded`` or
+/// ``SQLiteError/Code/instructionLimitExceeded``. The first cause wins: an operation
+/// that was cancelled first still throws ``SQLiteError/Code/interrupted``.
+public struct SQLiteOperationLimits: Sendable, Hashable {
+    /// The wall-clock budget, measured on `ContinuousClock` from the moment the call
+    /// starts, including the wait for a free connection and for locks. A deadline that
+    /// passes after `COMMIT` was issued no longer stops the commit.
+    public var timeout: Duration?
+    /// The budget of SQLite virtual-machine instructions across all statements of the
+    /// operation. SQLiteSwift counts in steps of
+    /// ``SQLiteOperationLimits/instructionCheckInterval`` instructions, so an operation
+    /// stops within that many instructions after crossing the budget.
+    public var maxInstructions: Int?
+
+    /// How often (in virtual-machine instructions) SQLiteSwift checks the limits and
+    /// cancellation while a statement runs.
+    public static let instructionCheckInterval = 1000
+
+    /// No time or instruction bound.
+    public static let unlimited = SQLiteOperationLimits()
+
+    public init(timeout: Duration? = nil, maxInstructions: Int? = nil) {
+        self.timeout = timeout
+        self.maxInstructions = maxInstructions
+    }
+
+    func validate() throws(SQLiteError) {
+        if let timeout, timeout <= .zero || timeout > .seconds(86_400) {
+            throw .invalidArgument("timeout must be in (0, 86400] seconds")
+        }
+        if let maxInstructions, maxInstructions <= 0 {
+            throw .invalidArgument("maxInstructions must be positive")
+        }
+    }
+}
+
 /// How to open a database.
 ///
 /// The default is a file database in WAL mode with one writer connection and four
@@ -138,6 +178,9 @@ public struct SQLiteConfiguration: Sendable {
     public var fileProtection: SQLiteFileProtection?
     /// The clock used by expiry helpers. Default ``SQLiteSystemClock``.
     public var clock: any SQLiteClock
+    /// The limits of every `read`, `write` and `writeOrRollback` call that doesn't
+    /// pass its own. Default ``SQLiteOperationLimits/unlimited``.
+    public var operationLimits: SQLiteOperationLimits
 
     /// A file database with the defaults described on ``SQLiteConfiguration``.
     public init(path: String) {
@@ -151,6 +194,7 @@ public struct SQLiteConfiguration: Sendable {
         self.appleFullFSync = true
         self.fileProtection = nil
         self.clock = SQLiteSystemClock()
+        self.operationLimits = .unlimited
     }
 
     /// A file database that uses one connection for reads and writes.
@@ -170,6 +214,11 @@ public struct SQLiteConfiguration: Sendable {
 
     func validate() throws(SQLiteError) {
         try limits.validate()
+        do throws(SQLiteError) {
+            try operationLimits.validate()
+        } catch {
+            throw .invalidConfiguration("operationLimits: \(error.reason ?? error.description)")
+        }
         guard (0...64).contains(readerCount) else {
             throw .invalidConfiguration("readerCount must be in 0...64")
         }

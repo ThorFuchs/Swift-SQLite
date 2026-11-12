@@ -27,12 +27,55 @@ enum ConnectionRole: Sendable, Equatable {
     }
 }
 
-/// Cancellation state of one job run on a connection.
+/// The stop state and limits of one job run on a connection.
+///
+/// The first reason to stop (cancellation, deadline or instruction budget) is latched
+/// and never replaced, so the error reports the first cause.
 final class SQLiteJobToken: Sendable {
-    private let flag = Atomic<Bool>(false)
+    enum StopCause: UInt8 {
+        case none = 0, cancelled, deadline, instructions
+    }
 
-    func cancel() { flag.store(true, ordering: .sequentiallyConsistent) }
-    var isCancelled: Bool { flag.load(ordering: .sequentiallyConsistent) }
+    private let cause = Atomic<UInt8>(StopCause.none.rawValue)
+    let deadline: ContinuousClock.Instant?
+    let maxInstructions: Int?
+
+    init(deadline: ContinuousClock.Instant? = nil, maxInstructions: Int? = nil) {
+        self.deadline = deadline
+        self.maxInstructions = maxInstructions
+    }
+
+    /// Latches `stop` unless another cause was latched first.
+    func latch(_ stop: StopCause) {
+        _ = cause.compareExchange(
+            expected: StopCause.none.rawValue, desired: stop.rawValue, ordering: .sequentiallyConsistent)
+    }
+
+    func cancel() { latch(.cancelled) }
+
+    var stopCause: StopCause {
+        StopCause(rawValue: cause.load(ordering: .sequentiallyConsistent)) ?? .none
+    }
+
+    var isStopped: Bool { stopCause != .none }
+
+    /// Latches `.deadline` if the deadline has passed. Returns whether it has.
+    @discardableResult
+    func checkDeadline(now: ContinuousClock.Instant = .now) -> Bool {
+        guard let deadline, now >= deadline else { return false }
+        latch(.deadline)
+        return true
+    }
+
+    /// The error for the latched cause, or `nil`.
+    var stopError: SQLiteError? {
+        switch stopCause {
+        case .none: nil
+        case .cancelled: .interrupted
+        case .deadline: .deadlineExceeded
+        case .instructions: .instructionLimitExceeded(limit: maxInstructions ?? 0)
+        }
+    }
 }
 
 /// A SQLite handle that may be passed to `sqlite3_interrupt` from another thread.
@@ -57,6 +100,10 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SQLiteSwift itself runs them.
     var allowTransactionControl = false
     private var busyStart = ContinuousClock.now
+    /// VM instructions the active job has used, in steps of the check interval.
+    var instructionsUsed = 0
+    /// While `true`, the progress handler never stops a statement (commit, rollback).
+    var budgetSuspended = false
     /// Shared with other threads; guards `sqlite3_interrupt`.
     let interrupt = Mutex(InterruptState())
 
@@ -106,6 +153,8 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         let context = Unmanaged.passUnretained(self).toOpaque()
         sqlite3_busy_handler(handle, busyCallback, context)
         sqlite3_set_authorizer(handle, authorizerCallback, context)
+        sqlite3_progress_handler(
+            handle, Int32(SQLiteOperationLimits.instructionCheckInterval), progressCallback, context)
         sqlite3_limit(handle, SQLITE_LIMIT_LENGTH, Int32(configuration.limits.hardMaxResultBytes))
         let interruptible = InterruptibleHandle(pointer: handle)
         interrupt.withLock { $0.handle = interruptible }
@@ -125,15 +174,31 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
     func error(_ code: Int32) -> SQLiteError {
         let primary = code & 0xFF
-        if activeToken?.isCancelled == true, primary == SQLITE_BUSY || primary == SQLITE_INTERRUPT {
-            return .interrupted
+        if primary == SQLITE_BUSY || primary == SQLITE_INTERRUPT, let stop = activeToken?.stopError {
+            return stop
         }
         let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
         return SQLiteError.make(code: code, message: message)
     }
 
-    func checkCancelled() throws(SQLiteError) {
-        if activeToken?.isCancelled == true { throw .interrupted }
+    /// The error the active job must stop with (cancelled, past its deadline or over
+    /// its instruction budget), or `nil`.
+    func pendingStop() -> SQLiteError? {
+        guard let token = activeToken else { return nil }
+        token.checkDeadline()
+        return token.stopError
+    }
+
+    func checkStop() throws(SQLiteError) {
+        if let stop = pendingStop() { throw stop }
+    }
+
+    /// Runs SQLiteSwift's own SQL with the operation budget suspended, so an
+    /// operation that already decided to finish is not stopped half-way.
+    func execFinishing(_ sql: String) throws(SQLiteError) {
+        budgetSuspended = true
+        defer { budgetSuspended = false }
+        try execInternal(sql)
     }
 
     func handle() throws(SQLiteError) -> OpaquePointer {
@@ -146,8 +211,11 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     fileprivate func onBusy(attempt: Int32) -> Int32 {
         let now = ContinuousClock.now
         if attempt == 0 { busyStart = now }
-        if activeToken?.isCancelled == true { return 0 }
-        let remaining = configuration.busyTimeout - (now - busyStart)
+        var remaining = configuration.busyTimeout - (now - busyStart)
+        if let token = activeToken {
+            if token.isStopped || token.checkDeadline(now: now) { return 0 }
+            if let deadline = token.deadline { remaining = min(remaining, deadline - now) }
+        }
         guard remaining > .zero else { return 0 }
         let backoffMS: [Int64] = [1, 2, 5, 10, 15, 20, 25, 25, 25, 50, 50, 100]
         let stepMS = backoffMS[min(Int(attempt), backoffMS.count - 1)]
@@ -156,6 +224,17 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         let micros = seconds * 1_000_000 + attoseconds / 1_000_000_000_000
         usleep(UInt32(clamping: max(micros, 1)))
         return 1
+    }
+
+    fileprivate func onProgress() -> Int32 {
+        guard !budgetSuspended, let token = activeToken else { return 0 }
+        if token.isStopped { return 1 }
+        instructionsUsed += SQLiteOperationLimits.instructionCheckInterval
+        if let max = token.maxInstructions, instructionsUsed > max {
+            token.latch(.instructions)
+            return 1
+        }
+        return token.checkDeadline() ? 1 : 0
     }
 
     fileprivate func authorize(action: Int32) -> Int32 {
@@ -214,7 +293,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
             if injectFailure { sqlite3_commit_hook(db, nil, nil) }
         }
         do throws(SQLiteError) {
-            try execInternal("COMMIT")
+            try execFinishing("COMMIT")
         } catch {
             if sqlite3_get_autocommit(db) == 0 {
                 rollbackIfNeeded()
@@ -233,8 +312,10 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     func rollbackIfNeeded() {
         guard let db, sqlite3_get_autocommit(db) == 0 else { return }
         allowTransactionControl = true
+        budgetSuspended = true
         sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
         allowTransactionControl = false
+        budgetSuspended = false
     }
 
     // MARK: User statements
@@ -377,6 +458,11 @@ private func rejectingCommitHook(_: UnsafeMutableRawPointer?) -> Int32 {
     1
 }
 
+private func progressCallback(_ context: UnsafeMutableRawPointer?) -> Int32 {
+    guard let context else { return 0 }
+    return Unmanaged<SQLiteConnectionCore>.fromOpaque(context).takeUnretainedValue().onProgress()
+}
+
 private func busyCallback(_ context: UnsafeMutableRawPointer?, _ attempt: Int32) -> Int32 {
     guard let context else { return 0 }
     return Unmanaged<SQLiteConnectionCore>.fromOpaque(context).takeUnretainedValue().onBusy(attempt: attempt)
@@ -412,21 +498,24 @@ final class SQLiteConnection: Sendable {
     }
 
     /// Runs `body` on this connection's thread and waits for it without blocking the
-    /// cooperative pool. Task cancellation sets the job's flag and calls
-    /// `sqlite3_interrupt` if the job is running.
+    /// cooperative pool. Task cancellation latches the job's stop cause and calls
+    /// `sqlite3_interrupt` if the job is running. The token's deadline and
+    /// instruction budget are enforced by the busy and progress handlers.
     func run<T: Sendable>(
+        token: SQLiteJobToken = SQLiteJobToken(),
         _ body: @escaping @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
-        let token = SQLiteJobToken()
         let core = self.core
         let result: Result<T, SQLiteError> = await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Result<T, SQLiteError>, Never>) in
                 let accepted = worker.enqueue {
                     core.interrupt.withLock { $0.current = token }
                     core.activeToken = token
+                    core.instructionsUsed = 0
                     let outcome: Result<T, SQLiteError>
-                    if token.isCancelled {
-                        outcome = .failure(.interrupted)
+                    token.checkDeadline()
+                    if let stop = token.stopError {
+                        outcome = .failure(stop)
                     } else {
                         outcome = Result { () throws(SQLiteError) -> T in try body(core) }
                     }

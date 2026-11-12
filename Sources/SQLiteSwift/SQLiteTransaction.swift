@@ -43,7 +43,7 @@ public final class SQLiteTransaction {
         guard isValid else {
             throw .misuse("a transaction was used after its closure returned")
         }
-        try core.checkCancelled()
+        try core.checkStop()
     }
 
     private func checkWritable(_ statement: OpaquePointer) throws(SQLiteError) {
@@ -82,7 +82,7 @@ public final class SQLiteTransaction {
             let rc = sqlite3_step(statement)
             if rc == SQLITE_DONE { break }
             guard rc == SQLITE_ROW else { throw core.error(rc) }
-            try core.checkCancelled()
+            try core.checkStop()
         }
         let db = try core.handle()
         return SQLiteChanges(
@@ -111,7 +111,7 @@ public final class SQLiteTransaction {
                     return
                 }
                 while true {
-                    if core.activeToken?.isCancelled == true { failure = .interrupted; return }
+                    if let stop = core.pendingStop() { failure = stop; return }
                     let step = sqlite3_step(statement)
                     if step == SQLITE_DONE { break }
                     guard step == SQLITE_ROW else { failure = core.error(step); return }

@@ -131,13 +131,19 @@ public final class SQLiteDatabase: Sendable {
     /// the error is thrown.
     ///
     /// If `COMMIT` itself fails after the transaction has ended, the call throws
-    /// ``SQLiteError/commitOutcomeUnknown(_:)``: the write may or may not be durable.
+    /// ``SQLiteError/Code/commitOutcomeUnknown``: the write may or may not be durable.
     /// Every other thrown error means the transaction was not committed.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work. It runs on the writer connection's thread.
     @discardableResult
     public func write<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
-        try await writeOrRollback { (transaction) throws(SQLiteError) in
+        try await writeOrRollback(limits: limits) { (transaction) throws(SQLiteError) in
             .commit(try body(transaction))
         }
     }
@@ -146,13 +152,20 @@ public final class SQLiteDatabase: Sendable {
     ///
     /// Use it to keep a domain outcome (for example a compare-and-set conflict) as a
     /// value while discarding the transaction's other changes.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work and its decision.
     @discardableResult
     public func writeOrRollback<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteTransactionOutcome<T>
     ) async throws(SQLiteError) -> T {
-        let slot = try await writerPool.acquire()
+        let token = try makeToken(limits)
+        let slot = try await writerPool.acquire(deadline: token.deadline)
         defer { writerPool.release(slot) }
-        return try await writer.run { (core) throws(SQLiteError) -> T in
+        return try await writer.run(token: token) { (core) throws(SQLiteError) -> T in
             try core.execInternal("BEGIN IMMEDIATE")
             let transaction = SQLiteTransaction(core: core, kind: .write)
             do throws(SQLiteError) {
@@ -160,11 +173,11 @@ public final class SQLiteDatabase: Sendable {
                 transaction.invalidate()
                 switch outcome {
                 case .commit(let value):
-                    try core.checkCancelled()
+                    try core.checkStop()
                     try core.commitTransaction()
                     return value
                 case .rollback(let value):
-                    try core.execInternal("ROLLBACK")
+                    try core.execFinishing("ROLLBACK")
                     return value
                 }
             } catch {
@@ -178,27 +191,43 @@ public final class SQLiteDatabase: Sendable {
     /// Runs `body` in a read transaction.
     ///
     /// All statements in `body` see the same WAL snapshot. Statements that write throw
-    /// ``SQLiteError/readOnly(_:)``.
+    /// ``SQLiteError/Code/readOnly``.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work. It runs on a reader connection's thread.
     @discardableResult
     public func read<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
+        let token = try makeToken(limits)
         let (pool, connections) = readerPool.map { ($0, readers) } ?? (writerPool, [writer])
-        let slot = try await pool.acquire()
+        let slot = try await pool.acquire(deadline: token.deadline)
         defer { pool.release(slot) }
-        return try await connections[slot].run { (core) throws(SQLiteError) -> T in
+        return try await connections[slot].run(token: token) { (core) throws(SQLiteError) -> T in
             try core.execInternal("BEGIN DEFERRED")
             let transaction = SQLiteTransaction(core: core, kind: .read)
             defer { transaction.invalidate() }
             do throws(SQLiteError) {
                 let value = try body(transaction)
-                try core.execInternal("COMMIT")
+                try core.execFinishing("COMMIT")
                 return value
             } catch {
                 core.rollbackIfNeeded()
                 throw error
             }
         }
+    }
+
+    /// A job token carrying the call's deadline and instruction budget.
+    private func makeToken(_ limits: SQLiteOperationLimits?) throws(SQLiteError) -> SQLiteJobToken {
+        let limits = limits ?? configuration.operationLimits
+        try limits.validate()
+        return SQLiteJobToken(
+            deadline: limits.timeout.map { ContinuousClock.now + $0 },
+            maxInstructions: limits.maxInstructions)
     }
 
     // MARK: Maintenance

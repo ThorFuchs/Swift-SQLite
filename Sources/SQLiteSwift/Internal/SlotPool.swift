@@ -34,6 +34,58 @@ final class SQLiteSlotPool: Sendable {
     }
 
     func acquire() async throws(SQLiteError) -> Int {
+        try await acquireResult().get()
+    }
+
+    /// Waits for a slot until `deadline`, then fails with
+    /// ``SQLiteError/Code/deadlineExceeded``. Task cancellation still fails with
+    /// ``SQLiteError/Code/interrupted``.
+    func acquire(deadline: ContinuousClock.Instant?) async throws(SQLiteError) -> Int {
+        guard let deadline else { return try await acquire() }
+        guard ContinuousClock.now < deadline else { throw .deadlineExceeded }
+        enum Event: Sendable {
+            case acquired(Result<Int, SQLiteError>)
+            case timedOut
+            case timerCancelled
+        }
+        let result: Result<Int, SQLiteError> = await withTaskGroup(of: Event.self) { group in
+            group.addTask { .acquired(await self.acquireResult()) }
+            group.addTask {
+                do {
+                    try await Task.sleep(until: deadline, clock: .continuous)
+                    return .timedOut
+                } catch {
+                    return .timerCancelled
+                }
+            }
+            var outcome: Result<Int, SQLiteError>?
+            var timedOut = false
+            for await event in group {
+                switch event {
+                case .acquired(let acquired):
+                    if timedOut {
+                        // The slot arrived after the deadline fired: give it back.
+                        if case .success(let slot) = acquired { release(slot) }
+                        outcome = .failure(.deadlineExceeded)
+                    } else {
+                        outcome = acquired
+                    }
+                    group.cancelAll()
+                case .timedOut:
+                    if outcome == nil {
+                        timedOut = true
+                        group.cancelAll()
+                    }
+                case .timerCancelled:
+                    break
+                }
+            }
+            return outcome ?? .failure(.interrupted)
+        }
+        return try result.get()
+    }
+
+    private func acquireResult() async -> Result<Int, SQLiteError> {
         let id = state.withLock { state -> UInt64 in
             state.nextID += 1
             return state.nextID
@@ -60,7 +112,7 @@ final class SQLiteSlotPool: Sendable {
                 }
             }
         }
-        return try result.get()
+        return result
     }
 
     func release(_ slot: Int) {
