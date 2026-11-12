@@ -369,37 +369,67 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     }
 
     func bind(_ values: [SQLiteValue], to statement: OpaquePointer) throws(SQLiteError) {
-        let expected = Int(sqlite3_bind_parameter_count(statement))
-        guard values.count == expected else {
-            throw .invalidArgument("the statement has \(expected) parameters but \(values.count) values were bound")
-        }
+        try checkParameterCount(values.count, statement)
         let hardCap = configuration.limits.hardMaxResultBytes
-        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
             let rc: Int32
             switch value {
-            case .null:
-                rc = sqlite3_bind_null(statement, index)
-            case .integer(let v):
-                rc = sqlite3_bind_int64(statement, index, v)
-            case .real(let v):
-                rc = sqlite3_bind_double(statement, index, v)
+            case .null: rc = sqlite3_bind_null(statement, index)
+            case .integer(let v): rc = sqlite3_bind_int64(statement, index, v)
+            case .real(let v): rc = sqlite3_bind_double(statement, index, v)
             case .text(let s):
                 let count = s.utf8.count
                 guard count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
-                rc = s.withCString { sqlite3_bind_text(statement, index, $0, Int32(count), transient) }
+                rc = s.withCString { sqlite3_bind_text(statement, index, $0, Int32(count), Self.transient) }
             case .blob(let bytes):
-                guard bytes.count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
-                if bytes.isEmpty {
-                    rc = sqlite3_bind_zeroblob(statement, index, 0)
-                } else {
-                    rc = bytes.withUnsafeBytes {
-                        sqlite3_bind_blob(statement, index, $0.baseAddress, Int32($0.count), transient)
-                    }
-                }
+                rc = try Self.bindBytes(bytes, text: false, statement, index, hardCap: hardCap)
             }
             guard rc == SQLITE_OK else { throw error(rc) }
+        }
+    }
+
+    func bind(_ values: [SQLiteRawValue], to statement: OpaquePointer) throws(SQLiteError) {
+        try checkParameterCount(values.count, statement)
+        let hardCap = configuration.limits.hardMaxResultBytes
+        for (offset, value) in values.enumerated() {
+            let index = Int32(offset + 1)
+            let rc: Int32
+            switch value {
+            case .null: rc = sqlite3_bind_null(statement, index)
+            case .integer(let v): rc = sqlite3_bind_int64(statement, index, v)
+            case .real(let v): rc = sqlite3_bind_double(statement, index, v)
+            case .text(let bytes): rc = try Self.bindBytes(bytes, text: true, statement, index, hardCap: hardCap)
+            case .blob(let bytes): rc = try Self.bindBytes(bytes, text: false, statement, index, hardCap: hardCap)
+            }
+            guard rc == SQLITE_OK else { throw error(rc) }
+        }
+    }
+
+    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private func checkParameterCount(_ count: Int, _ statement: OpaquePointer) throws(SQLiteError) {
+        let expected = Int(sqlite3_bind_parameter_count(statement))
+        guard count == expected else {
+            throw .invalidArgument("the statement has \(expected) parameters but \(count) values were bound")
+        }
+    }
+
+    /// Binds bytes as TEXT or BLOB with an explicit length, so embedded NUL bytes and
+    /// invalid UTF-8 are kept.
+    private static func bindBytes(
+        _ bytes: [UInt8], text: Bool, _ statement: OpaquePointer, _ index: Int32, hardCap: Int
+    ) throws(SQLiteError) -> Int32 {
+        guard bytes.count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
+        if bytes.isEmpty {
+            return text ? sqlite3_bind_text(statement, index, "", 0, transient) : sqlite3_bind_zeroblob(statement, index, 0)
+        }
+        return bytes.withUnsafeBytes { buffer -> Int32 in
+            if text {
+                return sqlite3_bind_text(
+                    statement, index, buffer.baseAddress!.assumingMemoryBound(to: CChar.self), Int32(buffer.count), transient)
+            }
+            return sqlite3_bind_blob(statement, index, buffer.baseAddress, Int32(buffer.count), transient)
         }
     }
 
@@ -410,12 +440,32 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         case SQLITE_FLOAT:
             return .real(sqlite3_column_double(statement, index))
         case SQLITE_TEXT:
-            let count = Int(sqlite3_column_bytes(statement, index))
             guard let pointer = sqlite3_column_text(statement, index) else { return .text("") }
+            let count = Int(sqlite3_column_bytes(statement, index))
             return .text(String(decoding: UnsafeBufferPointer(start: pointer, count: count), as: UTF8.self))
         case SQLITE_BLOB:
+            guard let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
             let count = Int(sqlite3_column_bytes(statement, index))
-            guard count > 0, let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
+            return .blob(Array(UnsafeRawBufferPointer(start: pointer, count: count)))
+        default:
+            return .null
+        }
+    }
+
+    static func rawColumnValue(_ statement: OpaquePointer, _ index: Int32) -> SQLiteRawValue {
+        switch sqlite3_column_type(statement, index) {
+        case SQLITE_INTEGER:
+            return .integer(sqlite3_column_int64(statement, index))
+        case SQLITE_FLOAT:
+            return .real(sqlite3_column_double(statement, index))
+        case SQLITE_TEXT:
+            // sqlite3_column_text first, then sqlite3_column_bytes (SQLite's documented order).
+            guard let pointer = sqlite3_column_text(statement, index) else { return .text([]) }
+            let count = Int(sqlite3_column_bytes(statement, index))
+            return .text(Array(UnsafeBufferPointer(start: pointer, count: count)))
+        case SQLITE_BLOB:
+            guard let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
+            let count = Int(sqlite3_column_bytes(statement, index))
             return .blob(Array(UnsafeRawBufferPointer(start: pointer, count: count)))
         default:
             return .null
@@ -424,20 +474,37 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
     /// Steps a bound statement to completion within the given row and byte limits.
     func collectRows(_ statement: OpaquePointer, maxRows: Int, maxBytes: Int) throws(SQLiteError) -> [SQLiteRow] {
+        try collect(statement, maxRows: maxRows, maxBytes: maxBytes, decode: Self.columnValue) {
+            SQLiteRow(columnNames: $0, values: $1)
+        }
+    }
+
+    /// Like ``collectRows(_:maxRows:maxBytes:)``, keeping the exact stored bytes.
+    func collectRawRows(_ statement: OpaquePointer, maxRows: Int, maxBytes: Int) throws(SQLiteError) -> [SQLiteRawRow] {
+        try collect(statement, maxRows: maxRows, maxBytes: maxBytes, decode: Self.rawColumnValue) {
+            SQLiteRawRow(columnNames: $0, values: $1)
+        }
+    }
+
+    private func collect<Value, Row>(
+        _ statement: OpaquePointer, maxRows: Int, maxBytes: Int,
+        decode: (OpaquePointer, Int32) -> Value,
+        makeRow: ([String], [Value]) -> Row
+    ) throws(SQLiteError) -> [Row] {
         let columnCount = sqlite3_column_count(statement)
         var names: [String] = []
         names.reserveCapacity(Int(columnCount))
         for index in 0..<columnCount {
             names.append(sqlite3_column_name(statement, index).map { String(cString: $0) } ?? "")
         }
-        var rows: [SQLiteRow] = []
+        var rows: [Row] = []
         var totalBytes = 0
         while true {
             let rc = sqlite3_step(statement)
             if rc == SQLITE_DONE { break }
             guard rc == SQLITE_ROW else { throw error(rc) }
             guard rows.count < maxRows else { throw .rowLimitExceeded(limit: maxRows) }
-            var values: [SQLiteValue] = []
+            var values: [Value] = []
             values.reserveCapacity(Int(columnCount))
             for index in 0..<columnCount {
                 let type = sqlite3_column_type(statement, index)
@@ -449,9 +516,9 @@ final class SQLiteConnectionCore: @unchecked Sendable {
                 }
                 totalBytes += size
                 guard totalBytes <= maxBytes else { throw .resultTooLarge(limit: maxBytes) }
-                values.append(Self.columnValue(statement, index))
+                values.append(decode(statement, index))
             }
-            rows.append(SQLiteRow(columnNames: names, values: values))
+            rows.append(makeRow(names, values))
         }
         return rows
     }

@@ -78,6 +78,10 @@ public final class SQLiteTransaction {
         defer { core.release(statement, isCached: isCached) }
         try checkWritable(statement)
         try core.bind(bindings, to: statement)
+        return try stepToCompletion(statement)
+    }
+
+    private func stepToCompletion(_ statement: OpaquePointer) throws(SQLiteError) -> SQLiteChanges {
         while true {
             let rc = sqlite3_step(statement)
             if rc == SQLITE_DONE { break }
@@ -136,6 +140,36 @@ public final class SQLiteTransaction {
         try checkWritable(statement)
         try core.bind(bindings, to: statement)
         return try core.collectRows(statement, maxRows: maxRows, maxBytes: maxBytes)
+    }
+
+    /// Runs one statement with raw bindings, which keep exact TEXT bytes (including
+    /// invalid UTF-8 and embedded NUL).
+    @discardableResult
+    public func executeRaw(_ sql: String, _ bindings: [SQLiteRawValue]) throws(SQLiteError) -> SQLiteChanges {
+        try ensureUsable()
+        let (statement, isCached) = try core.prepare(sql, cached: true)
+        defer { core.release(statement, isCached: isCached) }
+        try checkWritable(statement)
+        try core.bind(bindings, to: statement)
+        return try stepToCompletion(statement)
+    }
+
+    /// Runs a query and returns rows with the exact stored bytes, within row and byte
+    /// limits.
+    ///
+    /// TEXT comes back as ``SQLiteRawValue/text(_:)`` bytes, exactly as stored,
+    /// including invalid UTF-8 and embedded NUL bytes; nothing is decoded or repaired.
+    /// Limits work as in ``query(_:_:limits:)``.
+    public func queryRaw(
+        _ sql: String, _ bindings: [SQLiteRawValue] = [], limits: SQLiteQueryLimits? = nil
+    ) throws(SQLiteError) -> [SQLiteRawRow] {
+        try ensureUsable()
+        let (maxRows, maxBytes) = try resolve(limits)
+        let (statement, isCached) = try core.prepare(sql, cached: true)
+        defer { core.release(statement, isCached: isCached) }
+        try checkWritable(statement)
+        try core.bind(bindings, to: statement)
+        return try core.collectRawRows(statement, maxRows: maxRows, maxBytes: maxBytes)
     }
 
     /// Runs a query expected to return at most one row.
