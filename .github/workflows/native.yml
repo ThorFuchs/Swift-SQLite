@@ -13,7 +13,13 @@ jobs:
   macos:
     name: macOS / build, test, iOS cross-compile, docs
     # Self-hosted runner on the maintainer's Mac (the GitHub-hosted `xcode-27` image is
-    # not available to this private repository). The maintainer registers the runner.
+    # not available). The maintainer registers the runner.
+    # The repository is public: pull requests from forks never run on this runner, so
+    # outside code can't execute on the maintainer's machine. Linux CI (GitHub-hosted)
+    # still tests them; a maintainer can rerun macOS by pushing the branch here.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS, ARM64, macos-27]
     timeout-minutes: 45
     env:
