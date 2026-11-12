@@ -8,6 +8,8 @@ internal import SQLite3
 import Synchronization
 
 /// What a ``SQLiteDatabase/writeOrRollback(limits:_:)`` closure decided.
+///
+/// The cases are complete; no case will be added.
 public enum SQLiteTransactionOutcome<Value: Sendable>: Sendable {
     /// Commit the transaction and return the value.
     case commit(Value)
@@ -15,7 +17,8 @@ public enum SQLiteTransactionOutcome<Value: Sendable>: Sendable {
     case rollback(Value)
 }
 
-/// The mode of a WAL checkpoint (`sqlite3_wal_checkpoint_v2`).
+/// The mode of a WAL checkpoint (`sqlite3_wal_checkpoint_v2`). SQLite has exactly these
+/// four modes.
 public enum SQLiteCheckpointMode: Sendable, Hashable {
     case passive, full, restart, truncate
 
@@ -347,10 +350,7 @@ extension SQLiteConnectionCore {
     }
 
     var synchronousLevel: SQLiteValue {
-        switch configuration.synchronous {
-        case .full: .integer(2)
-        case .normal: .integer(1)
-        }
+        .integer(Int64(configuration.synchronous.level))
     }
 
     func configureWriter() throws(SQLiteError) {
@@ -435,7 +435,7 @@ extension SQLiteConnectionCore {
 public struct SQLiteEffectiveSettings: Sendable, Hashable {
     /// `PRAGMA journal_mode`, lowercased (`wal`, or `memory` for in-memory databases).
     public var journalMode: String
-    /// `PRAGMA synchronous`: 1 = NORMAL, 2 = FULL.
+    /// `PRAGMA synchronous`: 1 = NORMAL, 2 = FULL, 3 = EXTRA.
     public var synchronous: Int
     public var foreignKeys: Bool
     public var trustedSchema: Bool

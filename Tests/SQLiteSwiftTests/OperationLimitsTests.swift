@@ -35,7 +35,7 @@ struct OperationLimitsTests {
             }
             #expect(code(error) == .instructionLimitExceeded)
             #expect(error?.limit == 100_000)
-            #expect(error?.isStop == true)
+            #expect(error?.isInterruption == true)
             // The next operation on the same connection is not affected.
             let small = try await database.read { (tx) throws(SQLiteError) in
                 try tx.scalar("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT count(*) FROM c")

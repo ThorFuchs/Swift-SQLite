@@ -40,6 +40,17 @@ struct ConformanceTests {
         expectPassed(await kit.run(check))
     }
 
+    @Test("synchronous=EXTRA with a file identity", arguments: checks)
+    func extraSynchronous(check: SQLiteConformanceKit.Check) async {
+        let kit = SQLiteConformanceKit(migrations: sampleMigrations) { path in
+            var configuration = SQLiteConfiguration(path: path)
+            configuration.synchronous = .extra
+            configuration.fileIdentity = SQLiteFileIdentity(applicationID: 0x5445_5354, pageSize: 16384)
+            return configuration
+        }
+        expectPassed(await kit.run(check))
+    }
+
     @Test("No consumer migrations", arguments: checks)
     func noMigrations(check: SQLiteConformanceKit.Check) async {
         let kit = SQLiteConformanceKit()

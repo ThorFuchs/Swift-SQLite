@@ -501,7 +501,7 @@ private struct Context {
         if !isInMemory {
             try require(settings.journalMode == "wal", "journal_mode is \(settings.journalMode), expected wal")
         }
-        let synchronous = config.synchronous == .full ? 2 : 1
+        let synchronous = [SQLiteSynchronous.normal: 1, .full: 2, .extra: 3][config.synchronous] ?? 0
         try require(settings.synchronous == synchronous, "synchronous is \(settings.synchronous), expected \(synchronous)")
         try require(settings.foreignKeys == config.foreignKeys, "foreign_keys is \(settings.foreignKeys)")
         try require(!settings.trustedSchema, "trusted_schema is on")
