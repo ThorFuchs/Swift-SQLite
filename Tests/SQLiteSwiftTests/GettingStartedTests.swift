@@ -45,6 +45,43 @@ struct GettingStartedTests {
                          limits: SQLiteQueryLimits(maxRows: 100))
         }
         #expect(rows.count == 1)
+        let readVersion: Int64 = 2
+        let guarded = try await database.write { tx throws(SQLiteError) in
+            try tx.compareAndSet(
+                table: "tasks", id: .text(id), expectedVersion: readVersion,
+                assignments: [SQLiteAssignment("state", "cancelled")],
+                alsoRequire: .notIn("state", ["completed", "failed", "cancelled"]))
+        }
+        #expect(guarded == .guardFailed(currentVersion: 2))
+
+        var cursor: SQLiteKeysetCursor?
+        var scanned = 0
+        repeat {
+            let page = try await database.read { [cursor] tx throws(SQLiteError) in
+                try tx.queryPage(
+                    table: "tasks", columns: ["id", "state"], keyColumns: ["expires_at", "id"],
+                    after: cursor, filter: .notIn("state", ["failed", "cancelled"]),
+                    limit: 100)
+            }
+            scanned += page.rows.count
+            cursor = page.nextCursor
+        } while cursor != nil
+        #expect(scanned == 1)
+
+        let newID = "task-2"
+        let bytes: [UInt8] = [1]
+        do {
+            try await database.write { tx throws(SQLiteError) in
+                try tx.execute("INSERT INTO tasks (id, state, payload) VALUES (?, ?, ?)",
+                               [.text(newID), "working", .blob(bytes)])
+            }
+        } catch SQLiteError.commitOutcomeUnknown(_) {
+            let exists = try await database.read { tx throws(SQLiteError) in
+                try tx.queryOne("SELECT 1 FROM tasks WHERE id = ?", [.text(newID)]) != nil
+            }
+            #expect(exists)
+        }
+
         let deleted = try await database.write { tx throws(SQLiteError) in
             try tx.deleteExpired(from: "tasks", expiresAtColumn: "expires_at", limit: 500)
         }

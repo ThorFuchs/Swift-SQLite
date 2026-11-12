@@ -304,8 +304,10 @@ struct DatabaseTests {
             Issue.record("full/readOnly/tooBig"); return
         }
         #expect(kind(9) == .interrupted)
-        guard case .sqlite(let other) = kind(266) else { Issue.record("ioerr"); return }  // SQLITE_IOERR_READ
-        #expect(other.code.primary == .ioError)
+        guard case .ioError(let io) = kind(266) else { Issue.record("ioerr"); return }  // SQLITE_IOERR_READ
+        #expect(io.code.primary == .ioError)
+        guard case .sqlite(let other) = kind(1) else { Issue.record("generic"); return }  // SQLITE_ERROR
+        #expect(other.code.rawValue == 1)
         #expect(SQLiteError.full(SQLiteErrorDetails(code: .full, message: "x")).resultCode == .full)
         #expect(SQLiteError.migrationFailed(version: 1, name: "a", underlying: .interrupted).resultCode == .interrupt)
     }
