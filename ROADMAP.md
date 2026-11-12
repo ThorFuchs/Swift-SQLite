@@ -32,7 +32,7 @@ Nothing here changes 0.1.0 defaults.
 
 | Brief item | Decision | Why |
 | --- | --- | --- |
-| Three-way commit outcome (B3) | **Adopt for all consumers, starting with 0.1.0 wording** | MCP's exactly-once inputs have the same problem. A thrown `COMMIT` error does not prove non-commit |
+| Three-way commit outcome (B3) | **Adopt for all consumers; 0.1.0 has the typed `commitOutcomeUnknown`** | MCP's exactly-once inputs have the same problem. A thrown `COMMIT` error does not prove non-commit |
 | Settings readback, fail closed (B1) | **Adopt generally** | Also protects the WAL profile, for example against a filesystem that refuses WAL |
 | Rollback-journal durable profile (`DELETE`, `EXTRA`, `fullfsync`) (B1) | **Adopt as an opt-in profile** | Single-writer stores, network-shy app containers, consumers that want no sidecar files |
 | File identity on creation, fail closed on existing files (`page_size`, encoding, `auto_vacuum`, `application_id`, `user_version`) (B1) | **Adopt as a generic `SQLiteFileIdentity`** | Stops a consumer from opening the wrong file. The values are the consumer's (Content's `0x53434339` and `user_version 1` stay Content's) |
@@ -50,16 +50,19 @@ Nothing here changes 0.1.0 defaults.
 
 ## Phases
 
-### 0.1.0: acceptance candidate (PR #1), small truth fix
+### 0.1.0: acceptance candidate (PR #1) — downstream requirements done
 
-| Change | Scope |
+Done after the MCP-Server downstream review (ADR-0004 phase C prerequisites):
+
+| Change | Status |
 | --- | --- |
-| Commit wording | Docs and `write`: a thrown error means "not committed" only if it happened before `COMMIT` was issued. Errors from `COMMIT` itself are documented as outcome-unknown |
-| Optional: `SQLiteError.commitOutcomeUnknown(SQLiteError)` | Thrown when `COMMIT` was issued and did not report success, including cancellation during `COMMIT`. A small API addition while there are no consumers yet |
-
-Acceptance: a test that forces a `COMMIT` failure (for example `SQLITE_FULL` at
-commit via `max_page_count`) and expects `commitOutcomeUnknown`. A test that a failure
-before `COMMIT` stays the plain typed error.
+| Truthful commit errors: `SQLiteError.commitOutcomeUnknown(_)` when `COMMIT` failed and the transaction ended; every other thrown error means "not committed" | done |
+| `fullfsync` + `checkpoint_fullfsync` on by default on Apple platforms (opt-out `appleFullFSync = false`) | done |
+| Read-back verification of every applied pragma (`.settingMismatch`), `effectiveSettings()` | done (subset of 0.2.0 item 2) |
+| Guarded compare-and-set with typed `SQLitePredicate` and `.guardFailed(currentVersion:)` | done |
+| Keyset pagination (`queryPage`) | done |
+| Typed `.cantOpen` and `.ioError` (extended code); non-writable file fails at open with `.readOnly` | done |
+| `close()` contract: running work finishes, waiting work gets `.closed`, threads joined before return | done (tested) |
 
 ### 0.2.0: truthful and bounded (all consumers)
 
@@ -68,11 +71,10 @@ before `COMMIT` stays the plain typed error.
    consumer writes an idempotency key in the same transaction and resolves `unknown`
    with a fresh read after the original operation has stopped. A helper
    `resolveCommit(probe:)` runs that read on a fresh connection.
-2. **Settings verification.** Every pragma the active profile sets is read back. A
-   mismatch throws `.profileMismatch(setting:expected:actual:)` and closes the
-   database. `SQLiteDatabase.effectiveSettings` reports what is actually in force
-   (journal mode, synchronous, `foreign_keys`, `fullfsync`, `mmap_size`, limits,
-   engine version, source id, compile options).
+2. **Settings verification, extended.** 0.1.0 already reads back every pragma it
+   sets (`.settingMismatch`) and reports `effectiveSettings()`. 0.2.0 adds
+   `mmap_size`, limits and `PRAGMA compile_options` to the report, and applies the
+   same checks to the new profiles.
 3. **Operation budgets and deadlines.** `SQLiteOperationLimits` on each
    `read`/`write`: `maxVirtualMachineSteps` (progress handler every 1,000
    instructions) and `deadline`. The first cause is latched and reported as a typed

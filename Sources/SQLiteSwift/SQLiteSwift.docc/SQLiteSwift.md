@@ -54,6 +54,9 @@ pinned, unmodified SQLite amalgamation.
 ### Helpers
 
 - ``SQLiteCompareAndSetResult``
+- ``SQLitePredicate``
+- ``SQLiteKeysetCursor``
+- ``SQLiteKeysetPage``
 - ``SQLiteAssignment``
 - ``SQLiteIdentifier``
 - ``SQLiteTransactionOutcome``
@@ -67,6 +70,8 @@ pinned, unmodified SQLite amalgamation.
 - ``SQLiteTimestamp``
 
 ### Durability and platform options
+
+- ``SQLiteEffectiveSettings``
 
 - ``SQLiteSynchronous``
 - ``SQLiteFileProtection``
