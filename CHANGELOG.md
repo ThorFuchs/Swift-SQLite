@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 — candidate (unreleased, untagged)
+## Unreleased
+
+- CI: the macOS job on the self-hosted runner no longer runs for pull requests from
+  forks, now that the repository is public. Linux CI still runs for them.
+
+## 0.1.0 — 2026-11-12
 
 - Module names: `SQLiteSwift` (library), `SQLiteSwiftTesting` (test kit), `CSQLiteSwift`
   (Linux C target). Not `SwiftSQLite`, which clashes with a private Apple framework.
