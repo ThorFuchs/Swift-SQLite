@@ -98,6 +98,19 @@ case .notFound: ...
 To discard other changes on a conflict, use ``SQLiteDatabase/writeOrRollback(_:)``
 and return `.rollback(value)`.
 
+Add a typed guard to make the update conditional on more than the version, in the
+same atomic statement. Values are bound, never pasted into SQL:
+
+```swift
+let result = try await database.write { tx throws(SQLiteError) in
+    try tx.compareAndSet(
+        table: "tasks", id: .text(id), expectedVersion: readVersion,
+        assignments: [SQLiteAssignment("state", "cancelled")],
+        alsoRequire: .notIn("state", ["completed", "failed", "cancelled"]))
+}
+// .guardFailed(currentVersion:) means: right version, but already terminal.
+```
+
 ## Read
 
 `read` runs on a reader connection in a deferred transaction, so every statement in
@@ -116,6 +129,25 @@ Results are never silently truncated. Too many rows throw
 ``SQLiteTransaction/readBlob(table:column:keyColumn:key:maxBytes:)``. It checks
 `length(column)` before loading anything.
 
+## Page through rows
+
+For bounded batch scans (recovery after a restart, expiry sweeps), use keyset
+pagination over `NOT NULL` key columns that identify a row uniquely:
+
+```swift
+var cursor: SQLiteKeysetCursor?
+repeat {
+    let page = try await database.read { [cursor] tx throws(SQLiteError) in
+        try tx.queryPage(
+            table: "tasks", columns: ["id", "state"], keyColumns: ["created_at", "id"],
+            after: cursor, filter: .notIn("state", ["completed", "failed", "cancelled"]),
+            limit: 100)
+    }
+    // handle page.rows
+    cursor = page.nextCursor
+} while cursor != nil
+```
+
 ## Expiry and time
 
 Expiry helpers read time only from ``SQLiteConfiguration/clock``. Inject
@@ -127,6 +159,28 @@ try await database.write { tx throws(SQLiteError) in
 }
 ```
 
+## Commit outcomes
+
+`write` returns after `COMMIT` succeeded. When it throws, the transaction was not
+committed, with one exception: ``SQLiteError/commitOutcomeUnknown(_:)`` means
+`COMMIT` was issued, failed, and the transaction is no longer open, so the write may
+or may not be durable. Generate keys before the write, and on this error resolve with
+a fresh read of that key before replying to anyone:
+
+```swift
+do {
+    try await database.write { tx throws(SQLiteError) in
+        try tx.execute("INSERT INTO tasks (id, state, payload) VALUES (?, ?, ?)",
+                       [.text(id), "working", .blob(bytes)])
+    }
+} catch SQLiteError.commitOutcomeUnknown(_) {
+    let exists = try await database.read { tx throws(SQLiteError) in
+        try tx.queryOne("SELECT 1 FROM tasks WHERE id = ?", [.text(id)]) != nil
+    }
+    // reply only if `exists`
+}
+```
+
 ## Cancellation, busy and errors
 
 - Cancelling the calling task interrupts the running statement, rolls back and
@@ -135,6 +189,12 @@ try await database.write { tx throws(SQLiteError) in
   ``SQLiteConfiguration/busyTimeout``, the call throws ``SQLiteError/busy(_:)``.
 - A full disk (or `max_page_count`) throws ``SQLiteError/full(_:)``; the
   transaction is rolled back and the database stays usable.
+- A database file that isn't writable fails at open with ``SQLiteError/readOnly(_:)``;
+  a missing or inaccessible directory with ``SQLiteError/cantOpen(_:)``. I/O errors
+  arrive as ``SQLiteError/ioError(_:)`` with SQLite's extended code.
+- On Apple platforms, writes are synced with `F_FULLFSYNC` by default
+  (``SQLiteConfiguration/appleFullFSync``). ``SQLiteDatabase/effectiveSettings()``
+  reports the settings in force.
 
 ## Test your store with the conformance kit
 

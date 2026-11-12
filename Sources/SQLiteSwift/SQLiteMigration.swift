@@ -79,7 +79,12 @@ extension SQLiteConnectionCore {
                 }
                 try checkCancelled()
                 try execInternal("PRAGMA user_version = \(migration.version)")
-                try execInternal("COMMIT")
+                do throws(SQLiteError) {
+                    try commitTransaction()
+                } catch {
+                    throw SQLiteError.migrationFailed(
+                        version: migration.version, name: migration.name, underlying: error)
+                }
             } catch {
                 rollbackIfNeeded()
                 throw error

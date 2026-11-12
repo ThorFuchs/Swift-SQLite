@@ -193,6 +193,37 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         }
     }
 
+    /// Test hook: makes the next `commitTransaction()` fail after the transaction
+    /// ended (a commit hook turns the COMMIT into a rollback). Worker thread only.
+    var failNextCommitForTesting = false
+
+    /// Commits the open transaction and reports the outcome truthfully.
+    ///
+    /// - If `COMMIT` fails while the transaction is still open on this connection, no
+    ///   commit happened: the transaction is rolled back and the error is thrown as is.
+    /// - If `COMMIT` fails and the transaction is no longer open, SQLiteSwift cannot know
+    ///   whether it became durable: ``SQLiteError/commitOutcomeUnknown(_:)``.
+    func commitTransaction() throws(SQLiteError) {
+        let db = try handle()
+        let injectFailure = failNextCommitForTesting
+        failNextCommitForTesting = false
+        if injectFailure {
+            sqlite3_commit_hook(db, rejectingCommitHook, nil)
+        }
+        defer {
+            if injectFailure { sqlite3_commit_hook(db, nil, nil) }
+        }
+        do throws(SQLiteError) {
+            try execInternal("COMMIT")
+        } catch {
+            if sqlite3_get_autocommit(db) == 0 {
+                rollbackIfNeeded()
+                throw error
+            }
+            throw .commitOutcomeUnknown(error)
+        }
+    }
+
     var isAutocommit: Bool {
         guard let db else { return true }
         return sqlite3_get_autocommit(db) != 0
@@ -340,6 +371,10 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         }
         return rows
     }
+}
+
+private func rejectingCommitHook(_: UnsafeMutableRawPointer?) -> Int32 {
+    1
 }
 
 private func busyCallback(_ context: UnsafeMutableRawPointer?, _ attempt: Int32) -> Int32 {

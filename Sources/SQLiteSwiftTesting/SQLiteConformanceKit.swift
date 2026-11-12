@@ -27,9 +27,13 @@ public struct SQLiteConformanceKit: Sendable {
         case migrations
         /// A database newer than the migrations is refused and left byte-for-byte untouched.
         case schemaTooNew
-        /// Compare-and-set returns updated, conflict and not-found results; concurrent
-        /// updates of one version let exactly one win.
+        /// Compare-and-set returns updated, conflict, guard-failed and not-found results;
+        /// concurrent updates of one version let exactly one win.
         case compareAndSetConflict
+        /// A `COMMIT` rejected while the transaction is still open (a deferred foreign-key
+        /// violation) is reported as that typed error, not as an unknown outcome, and
+        /// nothing is committed. Needs `foreignKeys` on.
+        case commitFailure
         /// A second database on the same file gets `.busy` after its busy timeout while
         /// the first holds the write lock, then succeeds after it's released.
         case busyContention
@@ -100,6 +104,7 @@ public struct SQLiteConformanceKit: Sendable {
             case .migrations: try await context.checkMigrations()
             case .schemaTooNew: try await context.checkSchemaTooNew()
             case .compareAndSetConflict: try await context.checkCompareAndSet()
+            case .commitFailure: try await context.checkCommitFailure()
             case .busyContention: try await context.checkBusyContention()
             case .cancellationInterrupt: try await context.checkCancellation()
             case .walCheckpoint: try await context.checkWALCheckpoint()
@@ -168,6 +173,8 @@ private struct Context {
         switch check {
         case .schemaTooNew, .busyContention, .walCheckpoint, .recoveryAfterAbortedWrite:
             isInMemory ? "needs a file database" : nil
+        case .commitFailure:
+            configuration().foreignKeys ? nil : "needs foreignKeys enabled"
         default:
             nil
         }
@@ -328,6 +335,55 @@ private struct Context {
         try require(winners == 1 && losers == contenders - 1,
                     "\(contenders) concurrent CAS gave \(winners) winners and \(losers) conflicts")
         notes.add("\(contenders) concurrent CAS: 1 updated, \(losers) conflicts")
+
+        // A typed guard: same version, but the guard is false → guardFailed, unchanged.
+        let guarded = try await database.write { (tx) throws(SQLiteError) in
+            try tx.execute("INSERT INTO sqliteswift_probe (id, version, payload) VALUES (2, 1, NULL)")
+            return try tx.compareAndSet(table: "sqliteswift_probe", id: 2, expectedVersion: 1,
+                                        assignments: [SQLiteAssignment("payload", .blob([2]))],
+                                        alsoRequire: .isNotNull("payload"))
+        }
+        try require(guarded == .guardFailed(currentVersion: 1), "guarded CAS returned \(guarded), expected guardFailed(1)")
+        let stillNull = try await database.read { (tx) throws(SQLiteError) in
+            try tx.scalar("SELECT payload FROM sqliteswift_probe WHERE id = 2")
+        }
+        try require(stillNull == .null, "a failed guard changed the row")
+        notes.add("guarded CAS: guardFailed leaves the row unchanged")
+    }
+
+    // MARK: commit failure
+
+    func checkCommitFailure() async throws {
+        let database = try await open(configuration())
+        try await database.write { (tx) throws(SQLiteError) in
+            try tx.execute("""
+                CREATE TABLE IF NOT EXISTS sqliteswift_probe_child (
+                    id INTEGER PRIMARY KEY,
+                    parent INTEGER REFERENCES sqliteswift_probe(id) DEFERRABLE INITIALLY DEFERRED)
+                """)
+        }
+        var observed: SQLiteError?
+        do {
+            try await database.write { (tx) throws(SQLiteError) in
+                try tx.execute("INSERT INTO sqliteswift_probe_child (id, parent) VALUES (1, 4242)")
+            }
+        } catch {
+            observed = error
+        }
+        guard case .constraint(let details) = observed else {
+            await database.close()
+            throw ConformanceFailure(message: "a COMMIT rejected by a deferred foreign key gave \(String(describing: observed)), expected .constraint")
+        }
+        let rows = try await database.read { (tx) throws(SQLiteError) in
+            try tx.queryOne("SELECT count(*) FROM sqliteswift_probe_child")!.integer(0)
+        }
+        try await database.write { (tx) throws(SQLiteError) in
+            try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (4242)")
+            try tx.execute("INSERT INTO sqliteswift_probe_child (id, parent) VALUES (1, 4242)")
+        }
+        await database.close()
+        try require(rows == 0, "the rejected COMMIT left \(rows) rows")
+        notes.add("COMMIT rejected with code \(details.code.rawValue) while open: typed, not committed, database usable")
     }
 
     // MARK: busy contention

@@ -27,11 +27,12 @@ struct ConformanceTests {
         expectPassed(await kit.run(check))
     }
 
-    @Test("synchronous=NORMAL opt-in, 2 readers, no statement cache", arguments: checks)
+    @Test("synchronous=NORMAL opt-in, fullfsync off, 2 readers, no statement cache", arguments: checks)
     func normalSynchronous(check: SQLiteConformanceKit.Check) async {
         let kit = SQLiteConformanceKit(migrations: sampleMigrations) { path in
             var configuration = SQLiteConfiguration(path: path)
             configuration.synchronous = .normal
+            configuration.appleFullFSync = false
             configuration.readerCount = 2
             configuration.limits.statementCacheCapacity = 0
             return configuration
@@ -55,6 +56,17 @@ struct ConformanceTests {
         default:
             expectPassed(result)
         }
+    }
+
+    @Test("Checks that need foreign keys are skipped when they are off")
+    func foreignKeysOff() async {
+        let kit = SQLiteConformanceKit(migrations: sampleMigrations) { path in
+            var configuration = SQLiteConfiguration(path: path)
+            configuration.foreignKeys = false
+            return configuration
+        }
+        #expect(await kit.run(.commitFailure).outcome == .skipped("needs foreignKeys enabled"))
+        expectPassed(await kit.run(.compareAndSetConflict))
     }
 
     @Test("runAll returns every check in order")

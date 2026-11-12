@@ -8,6 +8,15 @@
   reader pool on WAL snapshot transactions, or a single connection. Each connection
   has a dedicated thread, joined on `close()`.
 - `synchronous=FULL` by default, `NORMAL` as opt-in; writes return after `COMMIT`.
+  On Apple platforms `fullfsync` and `checkpoint_fullfsync` are on by default
+  (`appleFullFSync`). Every applied setting is read back at open
+  (`SQLiteError.settingMismatch`); `effectiveSettings()` reports them.
+- Truthful commit errors: `SQLiteError.commitOutcomeUnknown` when `COMMIT` failed after
+  the transaction ended; every other thrown error means "not committed".
+- Typed `.cantOpen` and `.ioError` (extended code); a non-writable database file fails
+  at open with `.readOnly`.
+- Guarded compare-and-set (`alsoRequire:` with typed, bound `SQLitePredicate`) and
+  `.guardFailed(currentVersion:)`; keyset pagination with `queryPage`.
 - Bounded busy handler (default 5 s) → `SQLiteError.busy`; task cancellation →
   `sqlite3_interrupt` → `SQLiteError.interrupted`.
 - Forward-only `user_version` migrations, one transaction each; newer databases are
@@ -20,7 +29,7 @@
 - Injectable `SQLiteClock`; expiry helpers `deleteExpired`, `countExpired`, `deadline`.
 - WAL checkpoints (passive, full, restart, truncate).
 - Optional iOS data-protection class.
-- `SQLiteSwiftTesting`: `SQLiteConformanceKit` (8 checks), `SQLiteManualClock`,
+- `SQLiteSwiftTesting`: `SQLiteConformanceKit` (9 checks), `SQLiteManualClock`,
   `SQLiteTemporaryDirectory`, `SQLiteTestLatch`, `SQLiteCrashImage`.
 - Linux: pinned, unmodified SQLite 3.54.1 amalgamation with provenance and SHA-256
   verification. Apple platforms use the system SQLite.

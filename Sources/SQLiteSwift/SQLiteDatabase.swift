@@ -126,8 +126,13 @@ public final class SQLiteDatabase: Sendable {
     /// Runs `body` in a write transaction and commits it.
     ///
     /// Returns only after `COMMIT` succeeded (with `synchronous=FULL`, after the WAL
-    /// was synced). If `body` throws, or the task is cancelled before the commit, the
-    /// transaction is rolled back and the error is thrown.
+    /// was synced; on Apple platforms with `F_FULLFSYNC` by default). If `body` throws,
+    /// or the task is cancelled before the commit, the transaction is rolled back and
+    /// the error is thrown.
+    ///
+    /// If `COMMIT` itself fails after the transaction has ended, the call throws
+    /// ``SQLiteError/commitOutcomeUnknown(_:)``: the write may or may not be durable.
+    /// Every other thrown error means the transaction was not committed.
     @discardableResult
     public func write<T: Sendable>(
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
@@ -156,7 +161,7 @@ public final class SQLiteDatabase: Sendable {
                 switch outcome {
                 case .commit(let value):
                     try core.checkCancelled()
-                    try core.execInternal("COMMIT")
+                    try core.commitTransaction()
                     return value
                 case .rollback(let value):
                     try core.execInternal("ROLLBACK")
@@ -215,6 +220,13 @@ public final class SQLiteDatabase: Sendable {
             guard rc == SQLITE_OK else { throw core.error(rc) }
             return SQLiteCheckpointResult(walFrames: Int(log), checkpointedFrames: Int(checkpointed))
         }
+    }
+
+    /// The settings in force on the writer connection, read back from SQLite.
+    public func effectiveSettings() async throws(SQLiteError) -> SQLiteEffectiveSettings {
+        let slot = try await writerPool.acquire()
+        defer { writerPool.release(slot) }
+        return try await writer.run { (core) throws(SQLiteError) in try core.effectiveSettings() }
     }
 
     /// The database's current `PRAGMA user_version`.
@@ -277,30 +289,107 @@ public final class SQLiteDatabase: Sendable {
 }
 
 extension SQLiteConnectionCore {
+    /// Reads a pragma back and throws ``SQLiteError/settingMismatch(setting:expected:actual:)``
+    /// if it isn't the expected value.
+    func verifyPragma(_ name: String, expected: SQLiteValue) throws(SQLiteError) {
+        let actual = try scalarInternal("PRAGMA \(name)")
+        let matches: Bool
+        switch (actual, expected) {
+        case (.text(let a), .text(let e)): matches = a.lowercased() == e.lowercased()
+        default: matches = actual == expected
+        }
+        guard matches else {
+            throw .settingMismatch(setting: name, expected: expected.description, actual: actual.description)
+        }
+    }
+
+    var synchronousLevel: SQLiteValue {
+        switch configuration.synchronous {
+        case .full: .integer(2)
+        case .normal: .integer(1)
+        }
+    }
+
     func configureWriter() throws(SQLiteError) {
+        // SQLite silently opens a non-writable file read-only; fail at open instead of
+        // at the first write, so hosts can tell "not writable" from "busy".
+        if sqlite3_db_readonly(try handle(), "main") == 1 {
+            throw .readOnly(SQLiteErrorDetails(
+                code: .readOnly, message: "the database file is not writable: \(path)"))
+        }
         if case .file = configuration.storage {
-            guard case .text(let mode) = try scalarInternal("PRAGMA journal_mode = WAL"),
-                mode.lowercased() == "wal"
-            else {
-                throw .sqlite(SQLiteErrorDetails(
-                    code: SQLiteResultCode(rawValue: SQLITE_ERROR), message: "could not enable WAL mode"))
-            }
+            try execInternal("PRAGMA journal_mode = WAL")
+            try verifyPragma("journal_mode", expected: .text("wal"))
         }
         try execInternal("PRAGMA synchronous = \(configuration.synchronous.pragmaValue)")
         try execInternal("PRAGMA foreign_keys = \(configuration.foreignKeys ? "ON" : "OFF")")
         try execInternal("PRAGMA trusted_schema = OFF")
         try execInternal("PRAGMA wal_autocheckpoint = \(configuration.walAutoCheckpointPages)")
-        #if canImport(Darwin)
-        if configuration.appleFullFSync {
-            try execInternal("PRAGMA fullfsync = ON")
-            try execInternal("PRAGMA checkpoint_fullfsync = ON")
-        }
-        #endif
+        try verifyPragma("synchronous", expected: synchronousLevel)
+        try verifyPragma("foreign_keys", expected: .integer(configuration.foreignKeys ? 1 : 0))
+        try verifyPragma("trusted_schema", expected: .integer(0))
+        try configureFullFSync()
     }
 
     func configureReader() throws(SQLiteError) {
         try execInternal("PRAGMA query_only = ON")
         try execInternal("PRAGMA synchronous = \(configuration.synchronous.pragmaValue)")
         try execInternal("PRAGMA trusted_schema = OFF")
+        try verifyPragma("query_only", expected: .integer(1))
+        try verifyPragma("synchronous", expected: synchronousLevel)
+        try verifyPragma("trusted_schema", expected: .integer(0))
+        try configureFullFSync()
     }
+
+    /// Applies and verifies `fullfsync`/`checkpoint_fullfsync` on Apple platforms.
+    func configureFullFSync() throws(SQLiteError) {
+        #if canImport(Darwin)
+        let value = configuration.appleFullFSync ? "ON" : "OFF"
+        let expected: SQLiteValue = .integer(configuration.appleFullFSync ? 1 : 0)
+        try execInternal("PRAGMA fullfsync = \(value)")
+        try execInternal("PRAGMA checkpoint_fullfsync = \(value)")
+        try verifyPragma("fullfsync", expected: expected)
+        try verifyPragma("checkpoint_fullfsync", expected: expected)
+        #endif
+    }
+
+    func effectiveSettings() throws(SQLiteError) -> SQLiteEffectiveSettings {
+        func integer(_ name: String) throws(SQLiteError) -> Int {
+            guard case .integer(let v) = try scalarInternal("PRAGMA \(name)") else { return -1 }
+            return Int(v)
+        }
+        guard case .text(let journal) = try scalarInternal("PRAGMA journal_mode") else {
+            throw .misuse("journal_mode returned no text")
+        }
+        return SQLiteEffectiveSettings(
+            journalMode: journal.lowercased(),
+            synchronous: try integer("synchronous"),
+            foreignKeys: try integer("foreign_keys") == 1,
+            trustedSchema: try integer("trusted_schema") == 1,
+            fullFSync: try integer("fullfsync") == 1,
+            checkpointFullFSync: try integer("checkpoint_fullfsync") == 1,
+            busyTimeout: configuration.busyTimeout,
+            sqliteVersion: String(cString: sqlite3_libversion()),
+            sqliteSourceID: String(cString: sqlite3_sourceid()))
+    }
+}
+
+/// The settings actually in force on the writer connection, read back from SQLite.
+public struct SQLiteEffectiveSettings: Sendable, Hashable {
+    /// `PRAGMA journal_mode`, lowercased (`wal`, or `memory` for in-memory databases).
+    public var journalMode: String
+    /// `PRAGMA synchronous`: 1 = NORMAL, 2 = FULL.
+    public var synchronous: Int
+    public var foreignKeys: Bool
+    public var trustedSchema: Bool
+    /// `PRAGMA fullfsync` (only meaningful on Apple platforms).
+    public var fullFSync: Bool
+    /// `PRAGMA checkpoint_fullfsync` (only meaningful on Apple platforms).
+    public var checkpointFullFSync: Bool
+    /// The configured busy timeout (enforced by SQLiteSwift's busy handler).
+    public var busyTimeout: Duration
+    /// `sqlite3_libversion()` of the engine in use.
+    public var sqliteVersion: String
+    /// `sqlite3_sourceid()` of the engine in use.
+    public var sqliteSourceID: String
 }
