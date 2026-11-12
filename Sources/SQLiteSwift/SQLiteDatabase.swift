@@ -81,6 +81,10 @@ public final class SQLiteDatabase: Sendable {
 
     /// Opens (or creates) a database, configures it and applies pending migrations.
     ///
+    /// With a ``SQLiteConfiguration/fileIdentity``, an existing file must carry it, or
+    /// opening fails with ``SQLiteError/Code/fileIdentityMismatch`` before anything is
+    /// written.
+    ///
     /// A database whose `user_version` is newer than `migrations.count` is refused with
     /// ``SQLiteError/schemaTooNew(databaseVersion:supportedVersion:)`` before anything
     /// is written to it, including the switch to WAL mode.
@@ -99,7 +103,9 @@ public final class SQLiteDatabase: Sendable {
         do throws(SQLiteError) {
             try await writer.run { (core) throws(SQLiteError) in
                 try core.open()
+                let identity = try core.inspectFileIdentity()
                 _ = try core.checkSchemaVersion(supported: migrations.count)
+                try core.applyFileIdentity(identity)
                 try core.configureWriter()
                 try core.migrate(migrations)
             }
@@ -397,6 +403,15 @@ extension SQLiteConnectionCore {
         guard case .text(let journal) = try scalarInternal("PRAGMA journal_mode") else {
             throw .misuse("journal_mode returned no text")
         }
+        var compileOptions: [String] = []
+        let db = try handle()
+        var statement: OpaquePointer?
+        let rc = sqlite3_prepare_v2(db, "PRAGMA compile_options", -1, &statement, nil)
+        guard rc == SQLITE_OK, let statement else { throw error(rc) }
+        defer { sqlite3_finalize(statement) }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if case .text(let option) = Self.columnValue(statement, 0) { compileOptions.append(option) }
+        }
         return SQLiteEffectiveSettings(
             journalMode: journal.lowercased(),
             synchronous: try integer("synchronous"),
@@ -406,7 +421,13 @@ extension SQLiteConnectionCore {
             checkpointFullFSync: try integer("checkpoint_fullfsync") == 1,
             busyTimeout: configuration.busyTimeout,
             sqliteVersion: String(cString: sqlite3_libversion()),
-            sqliteSourceID: String(cString: sqlite3_sourceid()))
+            sqliteSourceID: String(cString: sqlite3_sourceid()),
+            applicationID: Int32(truncatingIfNeeded: try integerPragma("application_id")),
+            pageSize: Int(try integerPragma("page_size")),
+            autoVacuum: SQLiteAutoVacuum(rawValue: Int(try integerPragma("auto_vacuum"))) ?? .none,
+            mmapSize: Int(try integerPragma("mmap_size")),
+            maxLength: Int(sqlite3_limit(db, SQLITE_LIMIT_LENGTH, -1)),
+            compileOptions: compileOptions)
     }
 }
 
@@ -428,4 +449,17 @@ public struct SQLiteEffectiveSettings: Sendable, Hashable {
     public var sqliteVersion: String
     /// `sqlite3_sourceid()` of the engine in use.
     public var sqliteSourceID: String
+    /// `PRAGMA application_id` (0 if the file has none).
+    public var applicationID: Int32
+    /// `PRAGMA page_size` in bytes.
+    public var pageSize: Int
+    /// `PRAGMA auto_vacuum`.
+    public var autoVacuum: SQLiteAutoVacuum
+    /// `PRAGMA mmap_size` in bytes (0 means memory-mapped I/O is off).
+    public var mmapSize: Int
+    /// `SQLITE_LIMIT_LENGTH`: the largest string, BLOB or row SQLite accepts
+    /// (``SQLiteLimits/hardMaxResultBytes``).
+    public var maxLength: Int
+    /// `PRAGMA compile_options` of the engine in use, without the `SQLITE_` prefix.
+    public var compileOptions: [String]
 }

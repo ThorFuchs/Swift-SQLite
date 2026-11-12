@@ -190,6 +190,12 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         public var column: Int
         public var expected: SQLiteValueKind
         public var actual: SQLiteValueKind
+
+        public init(column: Int, expected: SQLiteValueKind, actual: SQLiteValueKind) {
+            self.column = column
+            self.expected = expected
+            self.actual = actual
+        }
     }
 
     /// The detail of a ``Code/settingMismatch`` or ``Code/fileIdentityMismatch`` error.
@@ -198,6 +204,12 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         public var name: String
         public var expected: String
         public var actual: String
+
+        public init(name: String, expected: String, actual: String) {
+            self.name = name
+            self.expected = expected
+            self.actual = actual
+        }
     }
 
     private enum Payload: Sendable, Hashable {

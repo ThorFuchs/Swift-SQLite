@@ -181,6 +181,10 @@ public struct SQLiteConfiguration: Sendable {
     /// The limits of every `read`, `write` and `writeOrRollback` call that doesn't
     /// pass its own. Default ``SQLiteOperationLimits/unlimited``.
     public var operationLimits: SQLiteOperationLimits
+    /// The file's identity (`application_id`, and optionally `page_size` and
+    /// `auto_vacuum`), written to new files and checked on existing ones. Default
+    /// `nil` (no check).
+    public var fileIdentity: SQLiteFileIdentity?
 
     /// A file database with the defaults described on ``SQLiteConfiguration``.
     public init(path: String) {
@@ -195,6 +199,7 @@ public struct SQLiteConfiguration: Sendable {
         self.fileProtection = nil
         self.clock = SQLiteSystemClock()
         self.operationLimits = .unlimited
+        self.fileIdentity = nil
     }
 
     /// A file database that uses one connection for reads and writes.
@@ -214,6 +219,7 @@ public struct SQLiteConfiguration: Sendable {
 
     func validate() throws(SQLiteError) {
         try limits.validate()
+        try fileIdentity?.validate()
         do throws(SQLiteError) {
             try operationLimits.validate()
         } catch {
