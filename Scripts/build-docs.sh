@@ -5,13 +5,15 @@
 # the build. Output: .build/docs/SQLiteSwift.doccarchive
 set -eu
 cd "$(dirname "$0")/.."
+# Use docc from PATH, or the one in the active Xcode toolchain.
+DOCC="${DOCC:-$(command -v docc || xcrun --find docc)}"
 rm -rf .build/docs/SQLiteSwift.doccarchive .build/docs/symbols
 mkdir -p .build/docs/symbols
 swift package --scratch-path .build/docs/build dump-symbol-graph --minimum-access-level public
 # Only the SQLiteSwift module's graph belongs in its catalog.
 find .build/docs/build -path '*symbolgraph*' -name 'SQLiteSwift.symbols.json' -exec cp {} .build/docs/symbols/ \; -quit
 find .build/docs/build -path '*symbolgraph*' -name 'SQLiteSwift@*.symbols.json' -exec cp {} .build/docs/symbols/ \;
-docc convert Sources/SQLiteSwift/SQLiteSwift.docc \
+"$DOCC" convert Sources/SQLiteSwift/SQLiteSwift.docc \
   --fallback-display-name SQLiteSwift \
   --fallback-bundle-identifier com.github.thorfuchs.sqliteswift \
   --additional-symbol-graph-dir .build/docs/symbols \

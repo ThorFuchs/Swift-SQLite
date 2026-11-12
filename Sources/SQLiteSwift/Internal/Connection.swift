@@ -284,7 +284,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     /// - If `COMMIT` fails while the transaction is still open on this connection, no
     ///   commit happened: the transaction is rolled back and the error is thrown as is.
     /// - If `COMMIT` fails and the transaction is no longer open, SQLiteSwift cannot know
-    ///   whether it became durable: ``SQLiteError/commitOutcomeUnknown(_:)``.
+    ///   whether it became durable: ``SQLiteError/Code/commitOutcomeUnknown``.
     func commitTransaction() throws(SQLiteError) {
         let db = try handle()
         let injectFailure = failNextCommitForTesting

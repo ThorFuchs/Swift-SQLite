@@ -6,12 +6,12 @@ internal import CSQLiteSwift
 internal import SQLite3
 #endif
 
-/// An open transaction, passed to the closures of ``SQLiteDatabase/read(_:)`` and
-/// ``SQLiteDatabase/write(_:)``.
+/// An open transaction, passed to the closures of ``SQLiteDatabase/read(limits:_:)`` and
+/// ``SQLiteDatabase/write(limits:_:)``.
 ///
 /// A transaction is valid only inside its closure and only on the thread that calls
 /// the closure; it isn't `Sendable`. Using it afterwards throws
-/// ``SQLiteError/misuse(_:)``. Transaction control statements (`BEGIN`, `COMMIT`,
+/// ``SQLiteError/Code/misuse``. Transaction control statements (`BEGIN`, `COMMIT`,
 /// `ROLLBACK`) are refused; SQLiteSwift owns the transaction. `SAVEPOINT` is allowed.
 public final class SQLiteTransaction {
     /// Whether a transaction may write.
@@ -127,8 +127,8 @@ public final class SQLiteTransaction {
 
     /// Runs a query and returns all rows, within row and byte limits.
     ///
-    /// More rows than the row limit throw ``SQLiteError/rowLimitExceeded(limit:)``;
-    /// more bytes than the byte budget throw ``SQLiteError/resultTooLarge(limit:)``.
+    /// More rows than the row limit throw ``SQLiteError/Code/rowLimitExceeded``;
+    /// more bytes than the byte budget throw ``SQLiteError/Code/resultTooLarge``.
     /// Results are never silently truncated.
     public func query(
         _ sql: String, _ bindings: [SQLiteValue] = [], limits: SQLiteQueryLimits? = nil
@@ -194,7 +194,7 @@ public final class SQLiteTransaction {
     /// into memory. Both queries run in this transaction's snapshot.
     ///
     /// - Returns: The bytes, or `nil` if no row matches or the column is NULL.
-    /// - Throws: ``SQLiteError/resultTooLarge(limit:)`` if the value is larger than
+    /// - Throws: ``SQLiteError/Code/resultTooLarge`` if the value is larger than
     ///   `maxBytes` (default: ``SQLiteLimits/defaultMaxResultBytes``).
     public func readBlob(
         table: SQLiteIdentifier,

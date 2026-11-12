@@ -47,7 +47,7 @@ public struct SQLiteErrorDetails: Sendable, Hashable, CustomStringConvertible {
     public var description: String { "\(message) (code \(code.rawValue))" }
 }
 
-/// The kind of a ``SQLiteValue``, used by ``SQLiteError/typeMismatch(column:expected:actual:)``.
+/// The kind of a ``SQLiteValue``, used by ``SQLiteError/Code/typeMismatch``.
 public enum SQLiteValueKind: String, Sendable, Hashable {
     case null, integer, real, text, blob
 }
@@ -78,7 +78,7 @@ public enum SQLiteValueKind: String, Sendable, Hashable {
 /// When a write throws, whether its transaction was committed depends on the code:
 /// - ``Code/commitOutcomeUnknown``: `COMMIT` was issued and did not report success,
 ///   and the transaction is no longer open. The data may or may not be durable.
-///   Resolve it with ``SQLiteDatabase/resolveCommit(_:)`` (for example by reading an
+///   Resolve it with ``SQLiteDatabase/resolveCommit(limits:_:)`` (for example by reading an
 ///   idempotency key written in the same transaction).
 /// - Every other code: the transaction was not committed. Either the failure happened
 ///   before `COMMIT` was issued, or `COMMIT` failed while the transaction was still

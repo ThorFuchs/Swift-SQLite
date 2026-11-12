@@ -1,9 +1,67 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — unreleased
 
+Truthful and bounded. This release changes the error and conformance-kit APIs so
+that later releases can add error codes and checks without breaking callers; see
+"Migrating from 0.1.0".
+
+### Breaking changes
+
+- `SQLiteError` is a struct instead of an enum. Match on `error.code`
+  (`SQLiteError.Code`, a struct with static members) with a `default` branch, or
+  catch by code: `catch SQLiteError.Code.busy { … }`. Detail moved to typed
+  accessors: `details`, `underlying`, `reason`, `limit`, `databaseVersion` and
+  `supportedVersion`, `migrationVersion` and `migrationName`, `typeMismatch`,
+  `setting`. Static factories keep the old construction spellings
+  (`.invalidArgument("…")`, `.schemaTooNew(databaseVersion:supportedVersion:)`).
+- `SQLiteConformanceKit.Check` is a struct instead of an enum. `allCases` and the
+  static names are unchanged; `rawValue` is now `name`; a `switch` needs a `default`.
+
+### Added
+
+- Operation limits: `SQLiteOperationLimits(timeout:maxInstructions:)` per call
+  (`read(limits:)`, `write(limits:)`, `writeOrRollback(limits:)`) or for the whole
+  database (`SQLiteConfiguration.operationLimits`). Deadlines also bound the wait
+  for a connection and for locks. New codes `.deadlineExceeded` and
+  `.instructionLimitExceeded`; the first cause (cancellation, deadline, budget) is
+  reported, and a stop never reaches the next operation on the connection.
+- Commit outcomes: `SQLiteCommitOutcome` (`.committed`, `.notCommitted`, `.unknown`)
+  from `writeReportingOutcome(limits:_:)`, and `resolveCommit(limits:_:)`, which
+  decides an unknown outcome on a fresh read-only connection.
+- Raw rows: `SQLiteRawValue` and `SQLiteRawRow` keep TEXT as its exact stored bytes
+  (invalid UTF-8 and embedded NUL included); `queryRaw(_:_:limits:)` and
+  `executeRaw(_:_:)`.
+- File identity: `SQLiteFileIdentity` (`application_id`, optional `page_size` and
+  `auto_vacuum`) is written to new files and checked on existing ones; a mismatch
+  throws `.fileIdentityMismatch` without writing. `adoptsUnmarkedFiles` marks files
+  created before an identity was adopted. `SQLiteAutoVacuum`.
+- `effectiveSettings()` also reports `applicationID`, `pageSize`, `autoVacuum`,
+  `mmapSize`, `maxLength` (`SQLITE_LIMIT_LENGTH`) and `compileOptions`.
+- Conformance kit: checks `commitOutcome`, `operationLimits`, `settingsVerification`
+  and `fileIdentity` (13 checks).
+
+### Fixed
+
+- Column reads call `sqlite3_column_text`/`sqlite3_column_blob` before
+  `sqlite3_column_bytes`, as SQLite documents.
+- `Scripts/build-docs.sh` finds `docc` in the active Xcode toolchain when it isn't on
+  `PATH`.
 - CI: the macOS job on the self-hosted runner no longer runs for pull requests from
   forks, now that the repository is public. Linux CI still runs for them.
+
+### Migrating from 0.1.0
+
+| 0.1.0 | 0.2.0 |
+| --- | --- |
+| `catch SQLiteError.busy(let d)` | `catch let e as SQLiteError where e.code == .busy` (detail: `e.details`) |
+| `catch SQLiteError.commitOutcomeUnknown(_)` | `catch SQLiteError.Code.commitOutcomeUnknown` |
+| `guard case .constraint(let d) = error` | `guard error.code == .constraint, let d = error.details` |
+| `case .schemaTooNew(let found, let supported)` | `error.databaseVersion`, `error.supportedVersion` |
+| `case .migrationFailed(let v, let name, let underlying)` | `error.migrationVersion`, `error.migrationName`, `error.underlying` |
+| `case .settingMismatch(let s, let e, let a)` | `error.setting?.name`, `.expected`, `.actual` |
+| `switch error { case .busy: … }` | `switch error.code { case .busy: … default: … }` |
+| `SQLiteConformanceKit.Check.x.rawValue` | `.name` |
 
 ## 0.1.0 — 2026-11-12
 

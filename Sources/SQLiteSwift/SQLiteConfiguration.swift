@@ -50,7 +50,7 @@ public struct SQLiteLimits: Sendable, Hashable {
     /// The hard cap for any per-query byte budget, BLOB read, bound value and row.
     ///
     /// It is also applied as `SQLITE_LIMIT_LENGTH`, so SQLite itself refuses strings,
-    /// BLOBs and rows larger than this with ``SQLiteError/tooBig(_:)``. Default: 16 MiB.
+    /// BLOBs and rows larger than this with ``SQLiteError/Code/tooBig``. Default: 16 MiB.
     public var hardMaxResultBytes: Int
     /// The row limit of one query when the query doesn't set its own. Default: 10,000.
     public var defaultMaxRows: Int
@@ -88,9 +88,9 @@ public struct SQLiteLimits: Sendable, Hashable {
 
 /// Per-query limits. `nil` fields use the configured defaults from ``SQLiteLimits``.
 public struct SQLiteQueryLimits: Sendable, Hashable {
-    /// The maximum number of rows. More rows throw ``SQLiteError/rowLimitExceeded(limit:)``.
+    /// The maximum number of rows. More rows throw ``SQLiteError/Code/rowLimitExceeded``.
     public var maxRows: Int?
-    /// The maximum total bytes of all values. More throw ``SQLiteError/resultTooLarge(limit:)``.
+    /// The maximum total bytes of all values. More throw ``SQLiteError/Code/resultTooLarge``.
     /// Must not exceed ``SQLiteLimits/hardMaxResultBytes``.
     public var maxBytes: Int?
 
@@ -159,7 +159,7 @@ public struct SQLiteConfiguration: Sendable {
     public var readerCount: Int
     /// The `synchronous` setting. Default ``SQLiteSynchronous/full``.
     public var synchronous: SQLiteSynchronous
-    /// How long a statement waits for a lock before failing with ``SQLiteError/busy(_:)``.
+    /// How long a statement waits for a lock before failing with ``SQLiteError/Code/busy``.
     /// Default 5 seconds; at most 10 minutes.
     public var busyTimeout: Duration
     /// Size and count limits.

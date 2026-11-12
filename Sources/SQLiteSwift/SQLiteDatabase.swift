@@ -7,7 +7,7 @@ internal import SQLite3
 #endif
 import Synchronization
 
-/// What a ``SQLiteDatabase/writeOrRollback(_:)`` closure decided.
+/// What a ``SQLiteDatabase/writeOrRollback(limits:_:)`` closure decided.
 public enum SQLiteTransactionOutcome<Value: Sendable>: Sendable {
     /// Commit the transaction and return the value.
     case commit(Value)
@@ -47,7 +47,7 @@ public struct SQLiteCheckpointResult: Sendable, Hashable {
 /// - Each connection runs its SQLite calls on its own thread, never on the cooperative
 ///   thread pool. ``close()`` joins the threads.
 /// - Task cancellation interrupts the running statement (`sqlite3_interrupt`), rolls
-///   back and throws ``SQLiteError/interrupted``.
+///   back and throws ``SQLiteError/Code/interrupted``.
 public final class SQLiteDatabase: Sendable {
     public let configuration: SQLiteConfiguration
     /// The schema version the migrations define (the number of migrations).
@@ -86,7 +86,7 @@ public final class SQLiteDatabase: Sendable {
     /// written.
     ///
     /// A database whose `user_version` is newer than `migrations.count` is refused with
-    /// ``SQLiteError/schemaTooNew(databaseVersion:supportedVersion:)`` before anything
+    /// ``SQLiteError/Code/schemaTooNew`` before anything
     /// is written to it, including the switch to WAL mode.
     ///
     /// - Parameters:
@@ -242,7 +242,7 @@ public final class SQLiteDatabase: Sendable {
     ///
     /// `.truncate` also truncates the WAL file to zero bytes when it succeeds fully.
     /// Readers holding old snapshots can make `.full`, `.restart` and `.truncate`
-    /// wait up to the busy timeout and then throw ``SQLiteError/busy(_:)``.
+    /// wait up to the busy timeout and then throw ``SQLiteError/Code/busy``.
     @discardableResult
     public func checkpoint(_ mode: SQLiteCheckpointMode = .passive) async throws(SQLiteError) -> SQLiteCheckpointResult {
         let slot = try await writerPool.acquire()
@@ -272,7 +272,7 @@ public final class SQLiteDatabase: Sendable {
     /// Closes all connections and joins their threads.
     ///
     /// Operations already running finish first; operations waiting for a connection
-    /// and all later calls throw ``SQLiteError/closed``. Calling `close()` again waits
+    /// and all later calls throw ``SQLiteError/Code/closed``. Calling `close()` again waits
     /// for the first close to finish.
     public func close() async {
         enum Step { case perform, wait, done }
@@ -332,7 +332,7 @@ public final class SQLiteDatabase: Sendable {
 }
 
 extension SQLiteConnectionCore {
-    /// Reads a pragma back and throws ``SQLiteError/settingMismatch(setting:expected:actual:)``
+    /// Reads a pragma back and throws ``SQLiteError/Code/settingMismatch``
     /// if it isn't the expected value.
     func verifyPragma(_ name: String, expected: SQLiteValue) throws(SQLiteError) {
         let actual = try scalarInternal("PRAGMA \(name)")

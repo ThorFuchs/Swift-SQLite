@@ -21,15 +21,18 @@ versioned JSON envelopes). Domain logic stays in the consuming packages.
 | Connections | One writer (`BEGIN IMMEDIATE`) plus a bounded reader pool (default 4) on WAL snapshot transactions. `readerCount = 0` selects a single connection. |
 | Threads | Each connection runs SQLite calls on its own thread, never on the cooperative pool. `close()` lets running work finish, fails waiting work with `.closed` and joins the threads before it returns. No detached tasks, no global singletons. |
 | Durability | Writes return only after `COMMIT`. `synchronous=FULL` by default (`NORMAL` only as an explicit opt-in); on Apple platforms also `fullfsync` and `checkpoint_fullfsync` (`F_FULLFSYNC`) by default. Every applied setting is read back at open; a mismatch throws `.settingMismatch`. `effectiveSettings()` reports what is in force. |
-| Busy | Bounded busy timeout (default 5 s) → `SQLiteError.busy`. |
-| Cancellation | Task cancellation → `sqlite3_interrupt` → rollback → `SQLiteError.interrupted`. |
+| Busy | Bounded busy timeout (default 5 s) → `SQLiteError` code `.busy`. |
+| Cancellation | Task cancellation → `sqlite3_interrupt` → rollback → code `.interrupted`. |
+| Operation limits | Per-call or default deadlines and VM-instruction budgets (`SQLiteOperationLimits`), covering the wait for a connection and for locks → rollback → `.deadlineExceeded` / `.instructionLimitExceeded`. The first cause is reported; a stop never reaches the next operation. |
 | Migrations | `PRAGMA user_version`, forward-only, one transaction per migration. A newer database is refused with `.schemaTooNew` and left untouched. |
-| Commit outcomes | A thrown error means "not committed", except `.commitOutcomeUnknown`: `COMMIT` was issued, failed, and the transaction ended, so a fresh read must decide. |
+| Commit outcomes | A thrown error means "not committed", except `.commitOutcomeUnknown`: `COMMIT` was issued, failed, and the transaction ended. `resolveCommit` decides it with a fresh read on a new connection; `writeReportingOutcome` returns `.committed` / `.notCommitted` / `.unknown` as a value. |
+| File identity | Optional `SQLiteFileIdentity` (`application_id`, `page_size`, `auto_vacuum`): written to new files, checked on existing ones; the wrong file is refused with `.fileIdentityMismatch` and left untouched. |
 | Compare-and-set | `UPDATE … SET version = version + 1 WHERE id = ? AND version = ? [AND guard]` in one statement. Results: `.updated`, `.conflict(currentVersion:)`, `.guardFailed(currentVersion:)` (typed `SQLitePredicate` guard with bound values), `.notFound`. |
 | Pagination | Keyset pages (`queryPage`) over `(k1, k2, …)` with an optional typed filter, for bounded batch scans. |
 | Bounded reads | Per-query row limits, byte budgets (1 MiB default, 16 MiB hard cap, also applied as `SQLITE_LIMIT_LENGTH`), `length(col)` checks before loading BLOBs, and a bounded LRU statement cache. Results are never silently truncated. |
+| Byte-exact values | `queryRaw` / `executeRaw` with `SQLiteRawValue` keep TEXT as its stored bytes, including invalid UTF-8 and NUL. |
 | Time | Expiry helpers read only the injected `SQLiteClock`. |
-| Errors | `SQLiteError` has typed cases for busy, constraint, corrupt, full, read-only, can't open, I/O error (with extended code), too big, interrupted, commit outcome unknown, setting mismatch, schema too new, limits, closed and misuse, plus `.sqlite(_)` for every other result code. A non-writable database file fails at open with `.readOnly`. |
+| Errors | `SQLiteError` is a struct with a `code` that can grow without breaking your `switch`: busy, constraint, corrupt, full, read-only, can't open, I/O error (with extended code), too big, interrupted, deadline, instruction limit, commit outcome unknown, setting and file-identity mismatch, schema too new, migration failed, limits, closed, misuse, and `.sqlite` for every other result code. Catch by code: `catch SQLiteError.Code.busy`. A non-writable database file fails at open with `.readOnly`. |
 | iOS | Optional data-protection class via `SQLITE_OPEN_FILEPROTECTION_*`. |
 
 ## Quick start
@@ -66,10 +69,12 @@ Build the documentation with `Scripts/build-docs.sh`.
 
 ## Conformance kit
 
-`SQLiteSwiftTesting.SQLiteConformanceKit` runs nine checks against your migrations
+`SQLiteSwiftTesting.SQLiteConformanceKit` runs 13 checks against your migrations
 and configuration: migrations, schema-too-new refusal, compare-and-set conflict and
-guard, commit failure while the transaction is open, busy contention, cancellation
-interrupt, WAL checkpoint, recovery after an aborted mid-write crash image, and `SQLITE_FULL` via `max_page_count`.
+guard, commit failure while the transaction is open, commit outcomes and
+resolution, busy contention, cancellation interrupt, deadlines and instruction
+budgets, WAL checkpoint, recovery after an aborted mid-write crash image,
+`SQLITE_FULL` via `max_page_count`, settings verification, and file identity.
 
 ```swift
 @Test(arguments: SQLiteConformanceKit.Check.allCases)
