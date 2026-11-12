@@ -310,6 +310,14 @@ public final class SQLiteDatabase: Sendable {
         }
     }
 
+    /// Whether ``close()`` has started.
+    var isClosing: Bool {
+        lifecycle.withLock { state in
+            if case .open = state { return false }
+            return true
+        }
+    }
+
     // MARK: Diagnostics (internal; used by tests)
 
     var allWorkersExited: Bool {

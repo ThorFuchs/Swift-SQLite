@@ -18,11 +18,14 @@ import Musl
 enum ConnectionRole: Sendable, Equatable {
     case writer
     case reader(Int)
+    /// A short-lived read-only connection for ``SQLiteDatabase/resolveCommit(limits:_:)``.
+    case probe
 
     var threadName: String {
         switch self {
         case .writer: "sqliteswift.w"
         case .reader(let index): "sqliteswift.r\(index)"
+        case .probe: "sqliteswift.p"
         }
     }
 }
@@ -119,7 +122,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         var flags: Int32 = SQLITE_OPEN_EXRESCODE
         switch role {
         case .writer: flags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
-        case .reader: flags |= SQLITE_OPEN_READONLY
+        case .reader, .probe: flags |= SQLITE_OPEN_READONLY
         }
         if case .inMemory = configuration.storage {
             flags |= SQLITE_OPEN_MEMORY
