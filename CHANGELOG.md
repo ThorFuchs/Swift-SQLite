@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-11-12
 
 Truthful and bounded. This release changes the error and conformance-kit APIs so
 that later releases can add error codes and checks without breaking callers; see

@@ -58,7 +58,7 @@ force a break lands first.
 | Version | Content | Status |
 | --- | --- | --- |
 | 0.1.0 | Base package, MCP-Server prerequisites | released (tag `0.1.0`) |
-| 0.2.0 | Commit outcomes, operation limits, raw rows, file identity, extended settings; `SQLiteError` and `SQLiteConformanceKit.Check` become extensible structs | done, in review |
+| 0.2.0 | Commit outcomes, operation limits, raw rows, file identity, extended settings; `SQLiteError` and `SQLiteConformanceKit.Check` become extensible structs | released (tag `0.2.0`) |
 | 0.9.0 | API review and freeze; community files (SECURITY, CONTRIBUTING, code of conduct, issue and PR templates); CI gates (Thread and Address Sanitizer, API-breakage check against the last tag, release build, Dependabot for actions); hosted DocC; Swift Package Index (`.spi.yml`); public README; SemVer policy; branch protection; macOS CI for fork PRs on GitHub-hosted runners if available | next |
 | 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | |
 | 1.1.0+ | The 0.3.0 and 0.4.0 phases below, renumbered: opt-in profiles and the isolated engine are additive | |
