@@ -73,6 +73,8 @@ struct ConformanceTests {
     func runAll() async {
         let results = await SQLiteConformanceKit(migrations: sampleMigrations).runAll()
         #expect(results.map(\.check) == SQLiteConformanceKit.Check.allCases)
+        #expect(results.count == 13)
+        #expect(SQLiteConformanceKit.Check.fileIdentity.name == "fileIdentity")
         for result in results { expectPassed(result) }
     }
 }
