@@ -1,11 +1,15 @@
 # Swift-SQLite 0.1.0 — acceptance report
 
-Candidate for acceptance review, revised 2026-11-11 after the first review. Not
-tagged, not released, not merged.
+Round 1 was accepted and merged to `main` as `315a457` (PR #1, squash of
+`992a326`). **Round 2** (below) adds the downstream requirements from MCP-Server
+(ADR-0004 phase C prerequisites) on branch `swift-sqlite-0.1.0-downstream` (PR #2)
+before 0.1.0 is tagged. Not tagged, not released.
 
-- **Source verified:** branch `swift-sqlite-0.1.0` at commit `b2082f2`
-  (`b2082f22` …, "Rename module SwiftSQLite to SQLiteSwift"). The only later commit
-  updates this file.
+- **Round 2 source verified:** tree of `8d3b38d` on `swift-sqlite-0.1.0`; the PR #2
+  branch was cherry-picked onto `main` and has the identical tree. Its later commits
+  only update this file.
+- **Round 1 source verified:** branch `swift-sqlite-0.1.0` at commit `b2082f2`
+  (sections "Summary" to "Not run" below describe round 1 unless marked).
 - **Modules:** `SQLiteSwift` (library), `SQLiteSwiftTesting` (test kit), `CSQLiteSwift`
   (Linux C target). The spec's names `SwiftSQLite` / `SwiftSQLiteTesting` were changed
   on review because they clash with a private Apple framework (see open point 4).
@@ -34,6 +38,48 @@ tagged, not released, not merged.
   `SQLiteSwift` are small, inactive Xcode projects (at most 6 stars, last pushed
   2016–2018) without `Package.swift`. SQLite.swift exports the module `SQLite`, and
   Vapor's package exports `SQLiteKit`; neither is affected.
+
+## Review round 2: downstream requirements (MCP-Server, 2026-11-12)
+
+The MCP-Server session reviewed 0.1.0 against ADR-0004 and named these as
+prerequisites for `MCPTasksSQLite`. All are opt-out-free additions or stricter
+defaults; nothing from round 1 was removed.
+
+| Requirement (MCP) | Change | Evidence (test names) |
+| --- | --- | --- |
+| "Durable before reply": a failed COMMIT must not read as "not committed" | `SQLiteError.commitOutcomeUnknown(_)` when `COMMIT` failed and the transaction ended (`SQLiteConnectionCore.commitTransaction`). A COMMIT rejected while the transaction is still open stays the plain typed error (not committed, rolled back). Same rule in migrations | *A COMMIT that fails after the transaction ended reports commitOutcomeUnknown* (commit hook rejects COMMIT; fresh read resolves); *A COMMIT that fails while the transaction is still open is a plain error (not committed)* (deferred FK, code 787); *Cancellation before COMMIT is .interrupted and nothing is committed*; conformance check `commitFailure` |
+| Real durability on Apple: `fullfsync` + `checkpoint_fullfsync` on by default, opt-out, read back | `appleFullFSync = true` by default; applied on writer and readers; read back | *fullfsync is on by default on Apple platforms and verified; opt-out works*; the conformance suite runs with it on (default) and off ("synchronous=NORMAL opt-in, fullfsync off, …") |
+| Read back applied settings | Every pragma SQLiteSwift sets is read back at open (`journal_mode`, `synchronous`, `foreign_keys`, `trusted_schema`, `query_only`, `fullfsync`, `checkpoint_fullfsync`); mismatch → `.settingMismatch` and the open fails. `effectiveSettings()` reports them plus engine version and source id | *A setting that doesn't read back as expected throws settingMismatch*; *fullfsync is on by default …* (checks `effectiveSettings`) |
+| Typed READONLY, CANTOPEN, IOERR (extended code); "not writable" vs "busy" | New `.cantOpen`, `.ioError` cases; the writer checks `sqlite3_db_readonly` and fails at open with `.readOnly` instead of at the first write | *Opening in a missing directory throws .cantOpen*; *A database file that isn't writable fails at open with .readOnly* (skipped as root); *I/O and can't-open result codes map to typed errors with extended codes*; *Result codes map to typed errors* |
+| `close()` waits or fails deterministically, joins threads, nothing runs afterwards | Unchanged behavior, now pinned by a test: running work finishes, waiting work gets `.closed`, all worker threads are joined before `close()` returns | *close() lets running work finish, fails waiting work with .closed, and joins all threads*; round-1 tests *close() joins every worker thread …* and *close() waits for running operations to finish* |
+| Keyset pagination for `recoverable()` and `expire` batches | `SQLiteTransaction.queryPage(table:columns:keyColumns:descending:after:filter:limit:maxBytes:)` with `SQLiteKeysetCursor` / `SQLiteKeysetPage`; limit capped at `defaultMaxRows` | *Keyset pagination walks all rows in bounded, stable pages* (filter, tie-breaking id, insert between pages, descending, invalid cursor/limit) |
+| Guarded CAS with a typed predicate, bound parameters, own result case | `compareAndSet(…, alsoRequire: SQLitePredicate?)` in one atomic UPDATE; `.guardFailed(currentVersion:)` apart from `.conflict`; `SQLitePredicate` quotes identifiers, binds every value, refuses NULL comparisons, caps lists (1000) and nesting (32) | *Guarded CAS distinguishes updated, guardFailed, conflict and notFound*; *Predicates bind values and validate their shape* (injection string stays a bound value); conformance check `compareAndSetConflict` now includes a failed guard |
+
+### Round 2 commands and outcomes
+
+Same environment as round 1 (swiftly Swift 6.4.2, Xcode 27.2 SDKs), starting from
+`rm -rf .build`, on the tree of `8d3b38d`:
+
+| # | Command | Exit | Outcome |
+| --- | --- | --- | --- |
+| R2-1 | `Scripts/verify-amalgamation.sh` | 0 | hashes match |
+| R2-2 | `swift build --build-tests` | 0 | 0 warnings outside `sqlite3.c` |
+| R2-3 | `swift build -c release --scratch-path .build/release-check` | 0 | |
+| R2-4 | `swift test --xunit-output …` (3 runs) | 0, 0, 0 | **58 tests / 108 test cases in 7 suites passed** (1.30 s, 1.20 s, 1.19 s), 0 warnings |
+| R2-5 | iOS device cross-compile (`arm64-apple-ios18.0`, incl. tests) | 0 | |
+| R2-6 | iOS simulator cross-compile (`arm64-apple-ios18.0-simulator`, incl. tests) | 0 | |
+| R2-7 | `env -i … xcodebuild -scheme Swift-SQLite-Package -destination "id=<iPhone 17 Pro, iOS 27.2>" test` | 0 | `TEST SUCCEEDED`, **58 tests in 7 suites passed** |
+| R2-8 | `Scripts/build-docs.sh` | 0 | DocC with `--warnings-as-errors` |
+| R2-9 | Linux musl cross-compile, aarch64 and x86_64 | 0, 0 | |
+
+Test counts: 58 `@Test` functions, 9 of them parameterized (5 conformance
+configurations × 9 checks, the guide's conformance example × 9, reader pool × 3,
+statement cache × 2 = 59 cases), so 49 + 59 = 108 test cases. The conformance kit now
+has 9 checks (new: `commitFailure`).
+
+### Round 2 CI (PR #2)
+
+CI_ROUND2_PLACEHOLDER
 
 ## Summary
 
