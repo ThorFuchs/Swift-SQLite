@@ -41,13 +41,13 @@ final class SQLiteWorkerThread: @unchecked Sendable {
         #if canImport(Darwin) || canImport(Musl)
         guard result == 0, let started = handle else {
             Unmanaged<WorkerShared>.fromOpaque(context).release()
-            throw .sqlite(SQLiteErrorDetails(code: SQLiteResultCode(rawValue: 1), message: "pthread_create failed: \(result)"))
+            throw .sqlite(code: SQLiteResultCode(rawValue: 1), message: "pthread_create failed: \(result)")
         }
         thread = started
         #else
         guard result == 0 else {
             Unmanaged<WorkerShared>.fromOpaque(context).release()
-            throw .sqlite(SQLiteErrorDetails(code: SQLiteResultCode(rawValue: 1), message: "pthread_create failed: \(result)"))
+            throw .sqlite(code: SQLiteResultCode(rawValue: 1), message: "pthread_create failed: \(result)")
         }
         thread = handle
         #endif

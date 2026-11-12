@@ -20,34 +20,65 @@ import SQLiteSwift
 /// #expect(results.allSatisfy { $0.outcome == .passed })
 /// ```
 public struct SQLiteConformanceKit: Sendable {
-    /// The checks the kit runs.
-    public enum Check: String, Sendable, Hashable, CaseIterable {
+    /// One check the kit runs.
+    ///
+    /// `Check` is a struct, so new checks can be added in minor releases without
+    /// breaking a `switch`; give it a `default` branch. ``allCases`` lists every check
+    /// in the order ``runAll()`` runs them.
+    public struct Check: Sendable, Hashable, CaseIterable, CustomStringConvertible {
+        enum Kind: String, Sendable, CaseIterable {
+            case migrations, schemaTooNew, compareAndSetConflict, commitFailure, commitOutcome
+            case busyContention, cancellationInterrupt, operationLimits, walCheckpoint
+            case recoveryAfterAbortedWrite, diskFull, settingsVerification, fileIdentity
+        }
+
+        let kind: Kind
+
+        /// A stable, machine-readable name, for example `"migrations"`.
+        public var name: String { kind.rawValue }
+        public var description: String { name }
+
+        /// Every check, in the order ``SQLiteConformanceKit/runAll()`` runs them.
+        public static var allCases: [Check] { Kind.allCases.map(Check.init(kind:)) }
+
         /// Migrations apply once, in order; reopening runs none; a partial upgrade runs
         /// only the rest; a failing migration rolls back alone.
-        case migrations
+        public static let migrations = Check(kind: .migrations)
         /// A database newer than the migrations is refused and left byte-for-byte untouched.
-        case schemaTooNew
+        public static let schemaTooNew = Check(kind: .schemaTooNew)
         /// Compare-and-set returns updated, conflict, guard-failed and not-found results;
         /// concurrent updates of one version let exactly one win.
-        case compareAndSetConflict
+        public static let compareAndSetConflict = Check(kind: .compareAndSetConflict)
         /// A `COMMIT` rejected while the transaction is still open (a deferred foreign-key
         /// violation) is reported as that typed error, not as an unknown outcome, and
         /// nothing is committed. Needs `foreignKeys` on.
-        case commitFailure
+        public static let commitFailure = Check(kind: .commitFailure)
+        /// `writeReportingOutcome` reports committed and not-committed writes, and
+        /// `resolveCommit` agrees with what is durable.
+        public static let commitOutcome = Check(kind: .commitOutcome)
         /// A second database on the same file gets `.busy` after its busy timeout while
         /// the first holds the write lock, then succeeds after it's released.
-        case busyContention
+        public static let busyContention = Check(kind: .busyContention)
         /// Cancelling a running read or write interrupts it with `.interrupted`, rolls
         /// back, and leaves the database usable.
-        case cancellationInterrupt
+        public static let cancellationInterrupt = Check(kind: .cancellationInterrupt)
+        /// Instruction budgets and deadlines stop reads and writes with typed errors,
+        /// roll writes back, and never affect the next operation.
+        public static let operationLimits = Check(kind: .operationLimits)
         /// WAL checkpoints copy all frames back, and `.truncate` empties the WAL file.
-        case walCheckpoint
+        public static let walCheckpoint = Check(kind: .walCheckpoint)
         /// A crash image taken in the middle of an uncommitted write recovers to the last
         /// committed state with a passing integrity check.
-        case recoveryAfterAbortedWrite
+        public static let recoveryAfterAbortedWrite = Check(kind: .recoveryAfterAbortedWrite)
         /// `max_page_count` simulates a full disk: the write fails with `.full`, rolls
         /// back, and the database keeps working.
-        case diskFull
+        public static let diskFull = Check(kind: .diskFull)
+        /// The settings read back from SQLite match the configuration.
+        public static let settingsVerification = Check(kind: .settingsVerification)
+        /// A file identity (the configured one, or a probe identity) is written to a new
+        /// file, accepted on reopen, and a different identity is refused without
+        /// changing the file.
+        public static let fileIdentity = Check(kind: .fileIdentity)
     }
 
     /// The outcome of one check.
@@ -100,16 +131,20 @@ public struct SQLiteConformanceKit: Sendable {
             if let reason = context.skipReason(for: check) {
                 return CheckResult(check: check, outcome: .skipped(reason), notes: notes.all)
             }
-            switch check {
+            switch check.kind {
             case .migrations: try await context.checkMigrations()
             case .schemaTooNew: try await context.checkSchemaTooNew()
             case .compareAndSetConflict: try await context.checkCompareAndSet()
             case .commitFailure: try await context.checkCommitFailure()
+            case .commitOutcome: try await context.checkCommitOutcome()
             case .busyContention: try await context.checkBusyContention()
             case .cancellationInterrupt: try await context.checkCancellation()
+            case .operationLimits: try await context.checkOperationLimits()
             case .walCheckpoint: try await context.checkWALCheckpoint()
             case .recoveryAfterAbortedWrite: try await context.checkRecovery()
             case .diskFull: try await context.checkDiskFull()
+            case .settingsVerification: try await context.checkSettings()
+            case .fileIdentity: try await context.checkFileIdentity()
             }
             return CheckResult(check: check, outcome: .passed, notes: notes.all)
         } catch let failure as ConformanceFailure {
@@ -170,7 +205,7 @@ private struct Context {
     }
 
     func skipReason(for check: SQLiteConformanceKit.Check) -> String? {
-        switch check {
+        switch check.kind {
         case .schemaTooNew, .busyContention, .walCheckpoint, .recoveryAfterAbortedWrite:
             isInMemory ? "needs a file database" : nil
         case .commitFailure:
@@ -244,7 +279,7 @@ private struct Context {
             await database.close()
             throw ConformanceFailure(message: "a failing migration did not fail the open")
         } catch let error as SQLiteError {
-            guard case .migrationFailed(let failedVersion, _, _) = error, failedVersion == n + 2 else {
+            guard error.code == .migrationFailed, error.migrationVersion == n + 2 else {
                 throw ConformanceFailure(message: "expected migrationFailed(version: \(n + 2)), got \(error)")
             }
         }
@@ -277,7 +312,7 @@ private struct Context {
             await reopened.close()
             throw ConformanceFailure(message: "a database at version \(n + 1) was opened by code that knows \(n)")
         } catch let error as SQLiteError {
-            guard case .schemaTooNew(let found, let supported) = error, found == n + 1, supported == n else {
+            guard error.code == .schemaTooNew, error.databaseVersion == n + 1, error.supportedVersion == n else {
                 throw ConformanceFailure(message: "expected schemaTooNew(\(n + 1), \(n)), got \(error)")
             }
         }
@@ -370,7 +405,7 @@ private struct Context {
         } catch {
             observed = error
         }
-        guard case .constraint(let details) = observed else {
+        guard let observed, observed.code == .constraint, let details = observed.details else {
             await database.close()
             throw ConformanceFailure(message: "a COMMIT rejected by a deferred foreign key gave \(String(describing: observed)), expected .constraint")
         }
@@ -384,6 +419,133 @@ private struct Context {
         await database.close()
         try require(rows == 0, "the rejected COMMIT left \(rows) rows")
         notes.add("COMMIT rejected with code \(details.code.rawValue) while open: typed, not committed, database usable")
+    }
+
+    // MARK: commit outcome
+
+    func checkCommitOutcome() async throws {
+        let database = try await open(configuration())
+        let committed = await database.writeReportingOutcome { (tx) throws(SQLiteError) in
+            try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (5151)").changedRows
+        }
+        let duplicate = await database.writeReportingOutcome { (tx) throws(SQLiteError) in
+            try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (5252)")
+            try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (5151)")
+        }
+        let marker = { (id: Int64) -> @Sendable (SQLiteTransaction) throws(SQLiteError) -> Bool in
+            { (tx) throws(SQLiteError) in
+                try tx.queryOne("SELECT 1 FROM sqliteswift_probe WHERE id = ?", [.integer(id)]) != nil
+            }
+        }
+        let foundCommitted = try await database.resolveCommit(marker(5151))
+        let foundRolledBack = try await database.resolveCommit(marker(5252))
+        await database.close()
+        try require(committed.value == 1, "a successful write reported \(committed)")
+        guard case .notCommitted(let error) = duplicate, error.code == .constraint else {
+            throw ConformanceFailure(message: "a failing write reported \(duplicate), expected notCommitted(.constraint)")
+        }
+        try require(foundCommitted, "resolveCommit did not find a committed marker")
+        try require(!foundRolledBack, "resolveCommit found the marker of a rolled-back write")
+        notes.add("committed and notCommitted reported; resolveCommit matches durable state")
+    }
+
+    // MARK: operation limits
+
+    func checkOperationLimits() async throws {
+        let database = try await open(configuration())
+        let budget = SQLiteOperationLimits(maxInstructions: 10_000)
+        let readError = await stopError {
+            try await database.read(limits: budget) { (tx) throws(SQLiteError) in try tx.scalar(longQuery) }
+        }
+        let writeError = await stopError {
+            try await database.write(limits: budget) { (tx) throws(SQLiteError) in
+                try tx.execute("INSERT INTO sqliteswift_probe (id) VALUES (5353)")
+                _ = try tx.scalar(longQuery)
+            }
+        }
+        let start = ContinuousClock.now
+        let deadlineError = await stopError {
+            try await database.read(limits: SQLiteOperationLimits(timeout: .milliseconds(100))) {
+                (tx) throws(SQLiteError) in try tx.scalar(longQuery)
+            }
+        }
+        let elapsed = ContinuousClock.now - start
+        let leaked = try await count(database, "id = 5353")
+        let after = try await database.read { (tx) throws(SQLiteError) in try tx.scalar("SELECT 1") }
+        await database.close()
+        try require(readError?.code == .instructionLimitExceeded, "a budgeted read gave \(String(describing: readError))")
+        try require(writeError?.code == .instructionLimitExceeded, "a budgeted write gave \(String(describing: writeError))")
+        try require(deadlineError?.code == .deadlineExceeded, "a timed read gave \(String(describing: deadlineError))")
+        try require(elapsed < .seconds(5), "the deadline stopped the read only after \(elapsed)")
+        try require(leaked == 0, "the stopped write's insert was committed")
+        try require(after == .integer(1), "the database was unusable after a stop")
+        notes.add("budget and deadline stops typed; deadline honored after \(elapsed); write rolled back")
+    }
+
+    private func stopError<T>(_ operation: () async throws -> T) async -> SQLiteError? {
+        do {
+            _ = try await operation()
+            return nil
+        } catch {
+            return error as? SQLiteError
+        }
+    }
+
+    // MARK: settings verification
+
+    func checkSettings() async throws {
+        let config = configuration()
+        let database = try await open(config)
+        let settings = try await database.effectiveSettings()
+        await database.close()
+        if !isInMemory {
+            try require(settings.journalMode == "wal", "journal_mode is \(settings.journalMode), expected wal")
+        }
+        let synchronous = config.synchronous == .full ? 2 : 1
+        try require(settings.synchronous == synchronous, "synchronous is \(settings.synchronous), expected \(synchronous)")
+        try require(settings.foreignKeys == config.foreignKeys, "foreign_keys is \(settings.foreignKeys)")
+        try require(!settings.trustedSchema, "trusted_schema is on")
+        try require(settings.maxLength == config.limits.hardMaxResultBytes,
+                    "SQLITE_LIMIT_LENGTH is \(settings.maxLength), expected \(config.limits.hardMaxResultBytes)")
+        #if canImport(Darwin)
+        try require(settings.fullFSync == config.appleFullFSync, "fullfsync is \(settings.fullFSync)")
+        try require(settings.checkpointFullFSync == config.appleFullFSync, "checkpoint_fullfsync is \(settings.checkpointFullFSync)")
+        #endif
+        notes.add("SQLite \(settings.sqliteVersion), journal \(settings.journalMode), synchronous \(settings.synchronous), fullfsync \(settings.fullFSync)")
+    }
+
+    // MARK: file identity
+
+    func checkFileIdentity() async throws {
+        var config = configuration("identity.sqlite")
+        let identity = config.fileIdentity ?? SQLiteFileIdentity(applicationID: 0x5351_4B54)
+        config.fileIdentity = identity
+        let database = try await open(config)
+        let settings = try await database.effectiveSettings()
+        await database.close()
+        try require(settings.applicationID == identity.applicationID,
+                    "application_id is \(settings.applicationID), expected \(identity.applicationID)")
+        if let pageSize = identity.pageSize {
+            try require(settings.pageSize == pageSize, "page_size is \(settings.pageSize), expected \(pageSize)")
+        }
+        guard !isInMemory, let path = path(of: config) else {
+            notes.add("identity applied to a new in-memory database")
+            return
+        }
+        let reopened = try await SQLiteDatabase.open(config, migrations: migrations)
+        await reopened.close()
+        let before = SQLiteCrashImage.contents(path)
+        var wrong = config
+        wrong.fileIdentity = SQLiteFileIdentity(applicationID: identity.applicationID &+ 1)
+        do {
+            let opened = try await SQLiteDatabase.open(wrong, migrations: migrations)
+            await opened.close()
+            throw ConformanceFailure(message: "a file with another application_id was opened")
+        } catch let error as SQLiteError {
+            try require(error.code == .fileIdentityMismatch, "a wrong identity gave \(error), expected fileIdentityMismatch")
+        }
+        try require(SQLiteCrashImage.contents(path) == before, "the refused file changed")
+        notes.add("identity written, accepted on reopen, wrong identity refused without changes")
     }
 
     // MARK: busy contention
@@ -416,7 +578,7 @@ private struct Context {
         let elapsed = ContinuousClock.now - start
         latch.open()
         try await holding.value
-        guard case .busy = observed else {
+        guard observed?.code == .busy else {
             throw ConformanceFailure(message: "expected .busy while another connection writes, got \(String(describing: observed))")
         }
         try require(elapsed >= timeout * 0.8, "busy came after \(elapsed), before the \(timeout) timeout")
@@ -444,7 +606,7 @@ private struct Context {
         reading.cancel()
         let readResult = await reading.result
         let readLatency = ContinuousClock.now - cancelledAt
-        guard case .failure(let readError) = readResult, case .interrupted? = readError as? SQLiteError else {
+        guard case .failure(let readError) = readResult, (readError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a cancelled read returned \(readResult), expected .interrupted")
         }
@@ -460,7 +622,7 @@ private struct Context {
         try await Task.sleep(for: .milliseconds(150))
         writing.cancel()
         let writeResult = await writing.result
-        guard case .failure(let writeError) = writeResult, case .interrupted? = writeError as? SQLiteError else {
+        guard case .failure(let writeError) = writeResult, (writeError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a cancelled write returned \(writeResult), expected .interrupted")
         }
@@ -475,7 +637,7 @@ private struct Context {
             }
         }
         let preResult = await preCancelled.result
-        guard case .failure(let preError) = preResult, case .interrupted? = preError as? SQLiteError else {
+        guard case .failure(let preError) = preResult, (preError as? SQLiteError)?.code == .interrupted else {
             await database.close()
             throw ConformanceFailure(message: "a pre-cancelled write returned \(preResult), expected .interrupted")
         }
@@ -595,7 +757,7 @@ private struct Context {
         } catch {
             observed = error
         }
-        guard case .full(let details) = observed else {
+        guard let observed, observed.code == .full, let details = observed.details else {
             await database.close()
             throw ConformanceFailure(message: "expected .full with max_page_count reached, got \(String(describing: observed))")
         }

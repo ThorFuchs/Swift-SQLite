@@ -1,6 +1,8 @@
 # Swift-SQLite roadmap
 
-Status: proposal, 12 November 2026. It extends the 0.1.0 scope (ADR-0004 phase C
+Status: updated 12 November 2026. The path to 1.0.0 was agreed: 0.2.0 (truthful
+and bounded), then 0.9.0 (API freeze and public polish), then 1.0.0. The opt-in
+profiles follow as 1.x minor releases. Original proposal: 12 November 2026. It extends the 0.1.0 scope (ADR-0004 phase C
 requirements from MCP-Server) with what we learned from the Content Collections
 compatibility brief of 12 November 2026. Versions are targets, not commitments.
 Nothing here changes 0.1.0 defaults.
@@ -42,11 +44,24 @@ Nothing here changes 0.1.0 defaults.
 | Read-only source profile (`READONLY \| NOFOLLOW \| PRIVATECACHE`, no writer, no pragmas that write) (C2) | **Adopt** | Reading foreign or published databases safely is a general need |
 | Immutable image via `sqlite3_deserialize(READONLY)` with explicit buffer ownership (C1) | **Adopt** | Safe inspection of untrusted or packaged databases without touching the filesystem |
 | Confinement: deny-by-default authorizer through reprepare, `SQLITE_PREPARE_NO_VTAB`, defensive, `temp_store=MEMORY`, `sqlite3_limit` table (C3) | **Adopt as a `SQLiteConfinement` option** | Needed whenever SQL or database content is not fully trusted |
-| Isolated, prefixed, source-identified engine on all platforms (A1–A4) | **Adopt behind a probe** (0.4.0) | Apple's system SQLite differs by OS version (iOS 18 ships an older SQLite than macOS 27) and is compiled with options that conflict with strict profiles (`DQS=3`, `THREADSAFE=2`, mmap up to 1 GiB, shared cache, `USE_URI`). One engine everywhere gives every consumer reproducible behavior |
+| Isolated, prefixed, source-identified engine on all platforms (A1–A4) | **Adopt behind a probe** (1.2.0) | Apple's system SQLite differs by OS version (iOS 18 ships an older SQLite than macOS 27) and is compiled with options that conflict with strict profiles (`DQS=3`, `THREADSAFE=2`, mmap up to 1 GiB, shared cache, `USE_URI`). One engine everywhere gives every consumer reproducible behavior |
 | Source generation from Fossil sources with Tcl (A2) | **Adopt as an optional provenance mode** | Release amalgamation plus published hash stays the default; generation from a pinned check-in is offered when a consumer requires it |
 | Lock-file primitive and documented VFS assumptions (B4) | **Adopt the primitive and documentation** | Companion locks are a recurring need; POSIX `fcntl` lock semantics are a common trap |
 | Activity registry, generation pins, retention, GC, request journal, seal rules | **Not adopted** | Domain policy; stays in Content (and in MCP for its equivalents) |
 | Content's private `CSQLite` target ownership | **Respected** | Swift-SQLite offers the engine as a vendorable closure *and* as an optional product; consumers choose |
+
+## Path to 1.0.0
+
+1.0.0 is a promise: no source-breaking change before 2.0.0. Everything that could
+force a break lands first.
+
+| Version | Content | Status |
+| --- | --- | --- |
+| 0.1.0 | Base package, MCP-Server prerequisites | released (tag `0.1.0`) |
+| 0.2.0 | Commit outcomes, operation limits, raw rows, file identity, extended settings; `SQLiteError` and `SQLiteConformanceKit.Check` become extensible structs | done, in review |
+| 0.9.0 | API review and freeze; community files (SECURITY, CONTRIBUTING, code of conduct, issue and PR templates); CI gates (Thread and Address Sanitizer, API-breakage check against the last tag, release build, Dependabot for actions); hosted DocC; Swift Package Index (`.spi.yml`); public README; SemVer policy; branch protection; macOS CI for fork PRs on GitHub-hosted runners if available | next |
+| 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | |
+| 1.1.0+ | The 0.3.0 and 0.4.0 phases below, renumbered: opt-in profiles and the isolated engine are additive | |
 
 ## Phases
 
@@ -64,7 +79,13 @@ Done after the MCP-Server downstream review (ADR-0004 phase C prerequisites):
 | Typed `.cantOpen` and `.ioError` (extended code); non-writable file fails at open with `.readOnly` | done |
 | `close()` contract: running work finishes, waiting work gets `.closed`, threads joined before return | done (tested) |
 
-### 0.2.0: truthful and bounded (all consumers)
+### 0.2.0: truthful and bounded (all consumers) — done
+
+Delivered as planned, with these refinements: the budget is named
+`maxInstructions` and reported as `.instructionLimitExceeded`; the deadline is a
+`timeout` that also bounds the wait for a connection; the file identity leaves
+`user_version` to migrations and offers `adoptsUnmarkedFiles`; raw values can also
+be bound (`executeRaw`). The originally planned items:
 
 1. **Commit outcomes.** `SQLiteCommitOutcome<Value>` (`.committed`, `.notCommitted`,
    `.unknown`) with `writeReportingOutcome(_:)`. A documented resolution pattern: the
@@ -92,7 +113,7 @@ Done after the MCP-Server downstream review (ADR-0004 phase C prerequisites):
 Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
 `operationBudget` and `fileIdentity`, under every existing configuration.
 
-### 0.3.0: profiles for durable single-writer stores and safe reading
+### 1.1.0 (was 0.3.0): profiles for durable single-writer stores and safe reading
 
 1. **Rollback store profile.** `SQLiteConfiguration.rollbackStore(path:)`:
    - single connection, `journal_mode=DELETE`, `synchronous=EXTRA`,
@@ -133,7 +154,7 @@ Acceptance: positive and negative tests for every setting and every failure path
 buffer lifetime, authorizer denial after reprepare, and a commit-fault/reopen probe in
 rollback mode.
 
-### 0.4.0: one isolated engine everywhere (gated by a probe)
+### 1.2.0 (was 0.4.0): one isolated engine everywhere (gated by a probe)
 
 **Probe first**, on a branch:
 
@@ -174,7 +195,7 @@ and Linux.
 2. **Engine version** for the isolated engine: SQLite 3.54.1 (current release), or
    Content's 3.55.0 pre-release candidate `43a48f77…` once released?
 3. **Package traits:** confirm they work with this repo's CI (Swift 6.4, Xcode 27.2)
-   and with consumers that pin exact versions. Settled by the 0.4.0 probe.
+   and with consumers that pin exact versions. Settled by the 1.2.0 probe.
 4. **Packaging for Content:** vendored closure (no graph change) or a product
    dependency (needs Content's decision). Both are offered.
 

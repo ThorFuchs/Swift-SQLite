@@ -75,7 +75,7 @@ struct GettingStartedTests {
                 try tx.execute("INSERT INTO tasks (id, state, payload) VALUES (?, ?, ?)",
                                [.text(newID), "working", .blob(bytes)])
             }
-        } catch SQLiteError.commitOutcomeUnknown(_) {
+        } catch SQLiteError.Code.commitOutcomeUnknown {
             let exists = try await database.read { tx throws(SQLiteError) in
                 try tx.queryOne("SELECT 1 FROM tasks WHERE id = ?", [.text(newID)]) != nil
             }

@@ -7,7 +7,7 @@ internal import SQLite3
 #endif
 import Synchronization
 
-/// What a ``SQLiteDatabase/writeOrRollback(_:)`` closure decided.
+/// What a ``SQLiteDatabase/writeOrRollback(limits:_:)`` closure decided.
 public enum SQLiteTransactionOutcome<Value: Sendable>: Sendable {
     /// Commit the transaction and return the value.
     case commit(Value)
@@ -47,7 +47,7 @@ public struct SQLiteCheckpointResult: Sendable, Hashable {
 /// - Each connection runs its SQLite calls on its own thread, never on the cooperative
 ///   thread pool. ``close()`` joins the threads.
 /// - Task cancellation interrupts the running statement (`sqlite3_interrupt`), rolls
-///   back and throws ``SQLiteError/interrupted``.
+///   back and throws ``SQLiteError/Code/interrupted``.
 public final class SQLiteDatabase: Sendable {
     public let configuration: SQLiteConfiguration
     /// The schema version the migrations define (the number of migrations).
@@ -81,8 +81,12 @@ public final class SQLiteDatabase: Sendable {
 
     /// Opens (or creates) a database, configures it and applies pending migrations.
     ///
+    /// With a ``SQLiteConfiguration/fileIdentity``, an existing file must carry it, or
+    /// opening fails with ``SQLiteError/Code/fileIdentityMismatch`` before anything is
+    /// written.
+    ///
     /// A database whose `user_version` is newer than `migrations.count` is refused with
-    /// ``SQLiteError/schemaTooNew(databaseVersion:supportedVersion:)`` before anything
+    /// ``SQLiteError/Code/schemaTooNew`` before anything
     /// is written to it, including the switch to WAL mode.
     ///
     /// - Parameters:
@@ -99,7 +103,9 @@ public final class SQLiteDatabase: Sendable {
         do throws(SQLiteError) {
             try await writer.run { (core) throws(SQLiteError) in
                 try core.open()
+                let identity = try core.inspectFileIdentity()
                 _ = try core.checkSchemaVersion(supported: migrations.count)
+                try core.applyFileIdentity(identity)
                 try core.configureWriter()
                 try core.migrate(migrations)
             }
@@ -131,13 +137,19 @@ public final class SQLiteDatabase: Sendable {
     /// the error is thrown.
     ///
     /// If `COMMIT` itself fails after the transaction has ended, the call throws
-    /// ``SQLiteError/commitOutcomeUnknown(_:)``: the write may or may not be durable.
+    /// ``SQLiteError/Code/commitOutcomeUnknown``: the write may or may not be durable.
     /// Every other thrown error means the transaction was not committed.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work. It runs on the writer connection's thread.
     @discardableResult
     public func write<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
-        try await writeOrRollback { (transaction) throws(SQLiteError) in
+        try await writeOrRollback(limits: limits) { (transaction) throws(SQLiteError) in
             .commit(try body(transaction))
         }
     }
@@ -146,13 +158,20 @@ public final class SQLiteDatabase: Sendable {
     ///
     /// Use it to keep a domain outcome (for example a compare-and-set conflict) as a
     /// value while discarding the transaction's other changes.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work and its decision.
     @discardableResult
     public func writeOrRollback<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteTransactionOutcome<T>
     ) async throws(SQLiteError) -> T {
-        let slot = try await writerPool.acquire()
+        let token = try makeToken(limits)
+        let slot = try await writerPool.acquire(deadline: token.deadline)
         defer { writerPool.release(slot) }
-        return try await writer.run { (core) throws(SQLiteError) -> T in
+        return try await writer.run(token: token) { (core) throws(SQLiteError) -> T in
             try core.execInternal("BEGIN IMMEDIATE")
             let transaction = SQLiteTransaction(core: core, kind: .write)
             do throws(SQLiteError) {
@@ -160,11 +179,11 @@ public final class SQLiteDatabase: Sendable {
                 transaction.invalidate()
                 switch outcome {
                 case .commit(let value):
-                    try core.checkCancelled()
+                    try core.checkStop()
                     try core.commitTransaction()
                     return value
                 case .rollback(let value):
-                    try core.execInternal("ROLLBACK")
+                    try core.execFinishing("ROLLBACK")
                     return value
                 }
             } catch {
@@ -178,21 +197,28 @@ public final class SQLiteDatabase: Sendable {
     /// Runs `body` in a read transaction.
     ///
     /// All statements in `body` see the same WAL snapshot. Statements that write throw
-    /// ``SQLiteError/readOnly(_:)``.
+    /// ``SQLiteError/Code/readOnly``.
+    ///
+    /// - Parameters:
+    ///   - limits: Time and instruction bounds for this call. `nil` uses
+    ///     ``SQLiteConfiguration/operationLimits``.
+    ///   - body: The transaction's work. It runs on a reader connection's thread.
     @discardableResult
     public func read<T: Sendable>(
+        limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
+        let token = try makeToken(limits)
         let (pool, connections) = readerPool.map { ($0, readers) } ?? (writerPool, [writer])
-        let slot = try await pool.acquire()
+        let slot = try await pool.acquire(deadline: token.deadline)
         defer { pool.release(slot) }
-        return try await connections[slot].run { (core) throws(SQLiteError) -> T in
+        return try await connections[slot].run(token: token) { (core) throws(SQLiteError) -> T in
             try core.execInternal("BEGIN DEFERRED")
             let transaction = SQLiteTransaction(core: core, kind: .read)
             defer { transaction.invalidate() }
             do throws(SQLiteError) {
                 let value = try body(transaction)
-                try core.execInternal("COMMIT")
+                try core.execFinishing("COMMIT")
                 return value
             } catch {
                 core.rollbackIfNeeded()
@@ -201,13 +227,22 @@ public final class SQLiteDatabase: Sendable {
         }
     }
 
+    /// A job token carrying the call's deadline and instruction budget.
+    private func makeToken(_ limits: SQLiteOperationLimits?) throws(SQLiteError) -> SQLiteJobToken {
+        let limits = limits ?? configuration.operationLimits
+        try limits.validate()
+        return SQLiteJobToken(
+            deadline: limits.timeout.map { ContinuousClock.now + $0 },
+            maxInstructions: limits.maxInstructions)
+    }
+
     // MARK: Maintenance
 
     /// Runs a WAL checkpoint on the writer connection.
     ///
     /// `.truncate` also truncates the WAL file to zero bytes when it succeeds fully.
     /// Readers holding old snapshots can make `.full`, `.restart` and `.truncate`
-    /// wait up to the busy timeout and then throw ``SQLiteError/busy(_:)``.
+    /// wait up to the busy timeout and then throw ``SQLiteError/Code/busy``.
     @discardableResult
     public func checkpoint(_ mode: SQLiteCheckpointMode = .passive) async throws(SQLiteError) -> SQLiteCheckpointResult {
         let slot = try await writerPool.acquire()
@@ -237,7 +272,7 @@ public final class SQLiteDatabase: Sendable {
     /// Closes all connections and joins their threads.
     ///
     /// Operations already running finish first; operations waiting for a connection
-    /// and all later calls throw ``SQLiteError/closed``. Calling `close()` again waits
+    /// and all later calls throw ``SQLiteError/Code/closed``. Calling `close()` again waits
     /// for the first close to finish.
     public func close() async {
         enum Step { case perform, wait, done }
@@ -281,6 +316,14 @@ public final class SQLiteDatabase: Sendable {
         }
     }
 
+    /// Whether ``close()`` has started.
+    var isClosing: Bool {
+        lifecycle.withLock { state in
+            if case .open = state { return false }
+            return true
+        }
+    }
+
     // MARK: Diagnostics (internal; used by tests)
 
     var allWorkersExited: Bool {
@@ -289,7 +332,7 @@ public final class SQLiteDatabase: Sendable {
 }
 
 extension SQLiteConnectionCore {
-    /// Reads a pragma back and throws ``SQLiteError/settingMismatch(setting:expected:actual:)``
+    /// Reads a pragma back and throws ``SQLiteError/Code/settingMismatch``
     /// if it isn't the expected value.
     func verifyPragma(_ name: String, expected: SQLiteValue) throws(SQLiteError) {
         let actual = try scalarInternal("PRAGMA \(name)")
@@ -314,8 +357,7 @@ extension SQLiteConnectionCore {
         // SQLite silently opens a non-writable file read-only; fail at open instead of
         // at the first write, so hosts can tell "not writable" from "busy".
         if sqlite3_db_readonly(try handle(), "main") == 1 {
-            throw .readOnly(SQLiteErrorDetails(
-                code: .readOnly, message: "the database file is not writable: \(path)"))
+            throw .readOnly("the database file is not writable: \(path)")
         }
         if case .file = configuration.storage {
             try execInternal("PRAGMA journal_mode = WAL")
@@ -361,6 +403,15 @@ extension SQLiteConnectionCore {
         guard case .text(let journal) = try scalarInternal("PRAGMA journal_mode") else {
             throw .misuse("journal_mode returned no text")
         }
+        var compileOptions: [String] = []
+        let db = try handle()
+        var statement: OpaquePointer?
+        let rc = sqlite3_prepare_v2(db, "PRAGMA compile_options", -1, &statement, nil)
+        guard rc == SQLITE_OK, let statement else { throw error(rc) }
+        defer { sqlite3_finalize(statement) }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if case .text(let option) = Self.columnValue(statement, 0) { compileOptions.append(option) }
+        }
         return SQLiteEffectiveSettings(
             journalMode: journal.lowercased(),
             synchronous: try integer("synchronous"),
@@ -370,7 +421,13 @@ extension SQLiteConnectionCore {
             checkpointFullFSync: try integer("checkpoint_fullfsync") == 1,
             busyTimeout: configuration.busyTimeout,
             sqliteVersion: String(cString: sqlite3_libversion()),
-            sqliteSourceID: String(cString: sqlite3_sourceid()))
+            sqliteSourceID: String(cString: sqlite3_sourceid()),
+            applicationID: Int32(truncatingIfNeeded: try integerPragma("application_id")),
+            pageSize: Int(try integerPragma("page_size")),
+            autoVacuum: SQLiteAutoVacuum(rawValue: Int(try integerPragma("auto_vacuum"))) ?? .none,
+            mmapSize: Int(try integerPragma("mmap_size")),
+            maxLength: Int(sqlite3_limit(db, SQLITE_LIMIT_LENGTH, -1)),
+            compileOptions: compileOptions)
     }
 }
 
@@ -392,4 +449,17 @@ public struct SQLiteEffectiveSettings: Sendable, Hashable {
     public var sqliteVersion: String
     /// `sqlite3_sourceid()` of the engine in use.
     public var sqliteSourceID: String
+    /// `PRAGMA application_id` (0 if the file has none).
+    public var applicationID: Int32
+    /// `PRAGMA page_size` in bytes.
+    public var pageSize: Int
+    /// `PRAGMA auto_vacuum`.
+    public var autoVacuum: SQLiteAutoVacuum
+    /// `PRAGMA mmap_size` in bytes (0 means memory-mapped I/O is off).
+    public var mmapSize: Int
+    /// `SQLITE_LIMIT_LENGTH`: the largest string, BLOB or row SQLite accepts
+    /// (``SQLiteLimits/hardMaxResultBytes``).
+    public var maxLength: Int
+    /// `PRAGMA compile_options` of the engine in use, without the `SQLITE_` prefix.
+    public var compileOptions: [String]
 }

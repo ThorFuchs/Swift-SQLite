@@ -88,13 +88,13 @@ struct HelperTests {
                                          assignments: [SQLiteAssignment("version", 99)])
                 }
             }
-            guard case .invalidArgument = duplicate else { Issue.record("got \(String(describing: duplicate))"); return }
+            guard code(duplicate) == .invalidArgument else { Issue.record("got \(String(describing: duplicate))"); return }
             let inRead = await caught {
                 try await database.read { (tx) throws(SQLiteError) in
                     try tx.compareAndSet(table: "items", id: 7, expectedVersion: 3)
                 }
             }
-            guard case .readOnly = inRead else { Issue.record("got \(String(describing: inRead))"); return }
+            guard code(inRead) == .readOnly else { Issue.record("got \(String(describing: inRead))"); return }
         }
     }
 
@@ -149,7 +149,7 @@ struct HelperTests {
                     try tx.deleteExpired(from: "items", expiresAtColumn: "expires_at", limit: 0)
                 }
             }
-            guard case .invalidArgument = invalid else { Issue.record("got \(String(describing: invalid))"); return }
+            guard code(invalid) == .invalidArgument else { Issue.record("got \(String(describing: invalid))"); return }
         }
     }
 
@@ -188,7 +188,8 @@ struct HelperTests {
         let error = await caught {
             try await SQLiteDatabase.open(SQLiteConfiguration(path: directory.file("m.sqlite")), migrations: broken)
         }
-        guard case .migrationFailed(4, "broken", .sqlite(let details)) = error else {
+        guard let error, error.code == .migrationFailed, error.migrationVersion == 4,
+              error.migrationName == "broken", let details = details(error.underlying, .sqlite) else {
             Issue.record("got \(String(describing: error))"); return
         }
         #expect(details.message.contains("already exists"))

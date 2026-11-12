@@ -18,21 +18,67 @@ import Musl
 enum ConnectionRole: Sendable, Equatable {
     case writer
     case reader(Int)
+    /// A short-lived read-only connection for ``SQLiteDatabase/resolveCommit(limits:_:)``.
+    case probe
 
     var threadName: String {
         switch self {
         case .writer: "sqliteswift.w"
         case .reader(let index): "sqliteswift.r\(index)"
+        case .probe: "sqliteswift.p"
         }
     }
 }
 
-/// Cancellation state of one job run on a connection.
+/// The stop state and limits of one job run on a connection.
+///
+/// The first reason to stop (cancellation, deadline or instruction budget) is latched
+/// and never replaced, so the error reports the first cause.
 final class SQLiteJobToken: Sendable {
-    private let flag = Atomic<Bool>(false)
+    enum StopCause: UInt8 {
+        case none = 0, cancelled, deadline, instructions
+    }
 
-    func cancel() { flag.store(true, ordering: .sequentiallyConsistent) }
-    var isCancelled: Bool { flag.load(ordering: .sequentiallyConsistent) }
+    private let cause = Atomic<UInt8>(StopCause.none.rawValue)
+    let deadline: ContinuousClock.Instant?
+    let maxInstructions: Int?
+
+    init(deadline: ContinuousClock.Instant? = nil, maxInstructions: Int? = nil) {
+        self.deadline = deadline
+        self.maxInstructions = maxInstructions
+    }
+
+    /// Latches `stop` unless another cause was latched first.
+    func latch(_ stop: StopCause) {
+        _ = cause.compareExchange(
+            expected: StopCause.none.rawValue, desired: stop.rawValue, ordering: .sequentiallyConsistent)
+    }
+
+    func cancel() { latch(.cancelled) }
+
+    var stopCause: StopCause {
+        StopCause(rawValue: cause.load(ordering: .sequentiallyConsistent)) ?? .none
+    }
+
+    var isStopped: Bool { stopCause != .none }
+
+    /// Latches `.deadline` if the deadline has passed. Returns whether it has.
+    @discardableResult
+    func checkDeadline(now: ContinuousClock.Instant = .now) -> Bool {
+        guard let deadline, now >= deadline else { return false }
+        latch(.deadline)
+        return true
+    }
+
+    /// The error for the latched cause, or `nil`.
+    var stopError: SQLiteError? {
+        switch stopCause {
+        case .none: nil
+        case .cancelled: .interrupted
+        case .deadline: .deadlineExceeded
+        case .instructions: .instructionLimitExceeded(limit: maxInstructions ?? 0)
+        }
+    }
 }
 
 /// A SQLite handle that may be passed to `sqlite3_interrupt` from another thread.
@@ -57,6 +103,10 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     /// Allows `BEGIN`/`COMMIT`/`ROLLBACK` while SQLiteSwift itself runs them.
     var allowTransactionControl = false
     private var busyStart = ContinuousClock.now
+    /// VM instructions the active job has used, in steps of the check interval.
+    var instructionsUsed = 0
+    /// While `true`, the progress handler never stops a statement (commit, rollback).
+    var budgetSuspended = false
     /// Shared with other threads; guards `sqlite3_interrupt`.
     let interrupt = Mutex(InterruptState())
 
@@ -72,7 +122,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         var flags: Int32 = SQLITE_OPEN_EXRESCODE
         switch role {
         case .writer: flags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
-        case .reader: flags |= SQLITE_OPEN_READONLY
+        case .reader, .probe: flags |= SQLITE_OPEN_READONLY
         }
         if case .inMemory = configuration.storage {
             flags |= SQLITE_OPEN_MEMORY
@@ -106,6 +156,8 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         let context = Unmanaged.passUnretained(self).toOpaque()
         sqlite3_busy_handler(handle, busyCallback, context)
         sqlite3_set_authorizer(handle, authorizerCallback, context)
+        sqlite3_progress_handler(
+            handle, Int32(SQLiteOperationLimits.instructionCheckInterval), progressCallback, context)
         sqlite3_limit(handle, SQLITE_LIMIT_LENGTH, Int32(configuration.limits.hardMaxResultBytes))
         let interruptible = InterruptibleHandle(pointer: handle)
         interrupt.withLock { $0.handle = interruptible }
@@ -125,15 +177,31 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
     func error(_ code: Int32) -> SQLiteError {
         let primary = code & 0xFF
-        if activeToken?.isCancelled == true, primary == SQLITE_BUSY || primary == SQLITE_INTERRUPT {
-            return .interrupted
+        if primary == SQLITE_BUSY || primary == SQLITE_INTERRUPT, let stop = activeToken?.stopError {
+            return stop
         }
         let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
         return SQLiteError.make(code: code, message: message)
     }
 
-    func checkCancelled() throws(SQLiteError) {
-        if activeToken?.isCancelled == true { throw .interrupted }
+    /// The error the active job must stop with (cancelled, past its deadline or over
+    /// its instruction budget), or `nil`.
+    func pendingStop() -> SQLiteError? {
+        guard let token = activeToken else { return nil }
+        token.checkDeadline()
+        return token.stopError
+    }
+
+    func checkStop() throws(SQLiteError) {
+        if let stop = pendingStop() { throw stop }
+    }
+
+    /// Runs SQLiteSwift's own SQL with the operation budget suspended, so an
+    /// operation that already decided to finish is not stopped half-way.
+    func execFinishing(_ sql: String) throws(SQLiteError) {
+        budgetSuspended = true
+        defer { budgetSuspended = false }
+        try execInternal(sql)
     }
 
     func handle() throws(SQLiteError) -> OpaquePointer {
@@ -146,8 +214,11 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     fileprivate func onBusy(attempt: Int32) -> Int32 {
         let now = ContinuousClock.now
         if attempt == 0 { busyStart = now }
-        if activeToken?.isCancelled == true { return 0 }
-        let remaining = configuration.busyTimeout - (now - busyStart)
+        var remaining = configuration.busyTimeout - (now - busyStart)
+        if let token = activeToken {
+            if token.isStopped || token.checkDeadline(now: now) { return 0 }
+            if let deadline = token.deadline { remaining = min(remaining, deadline - now) }
+        }
         guard remaining > .zero else { return 0 }
         let backoffMS: [Int64] = [1, 2, 5, 10, 15, 20, 25, 25, 25, 50, 50, 100]
         let stepMS = backoffMS[min(Int(attempt), backoffMS.count - 1)]
@@ -156,6 +227,17 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         let micros = seconds * 1_000_000 + attoseconds / 1_000_000_000_000
         usleep(UInt32(clamping: max(micros, 1)))
         return 1
+    }
+
+    fileprivate func onProgress() -> Int32 {
+        guard !budgetSuspended, let token = activeToken else { return 0 }
+        if token.isStopped { return 1 }
+        instructionsUsed += SQLiteOperationLimits.instructionCheckInterval
+        if let max = token.maxInstructions, instructionsUsed > max {
+            token.latch(.instructions)
+            return 1
+        }
+        return token.checkDeadline() ? 1 : 0
     }
 
     fileprivate func authorize(action: Int32) -> Int32 {
@@ -202,7 +284,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     /// - If `COMMIT` fails while the transaction is still open on this connection, no
     ///   commit happened: the transaction is rolled back and the error is thrown as is.
     /// - If `COMMIT` fails and the transaction is no longer open, SQLiteSwift cannot know
-    ///   whether it became durable: ``SQLiteError/commitOutcomeUnknown(_:)``.
+    ///   whether it became durable: ``SQLiteError/Code/commitOutcomeUnknown``.
     func commitTransaction() throws(SQLiteError) {
         let db = try handle()
         let injectFailure = failNextCommitForTesting
@@ -214,7 +296,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
             if injectFailure { sqlite3_commit_hook(db, nil, nil) }
         }
         do throws(SQLiteError) {
-            try execInternal("COMMIT")
+            try execFinishing("COMMIT")
         } catch {
             if sqlite3_get_autocommit(db) == 0 {
                 rollbackIfNeeded()
@@ -233,8 +315,10 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     func rollbackIfNeeded() {
         guard let db, sqlite3_get_autocommit(db) == 0 else { return }
         allowTransactionControl = true
+        budgetSuspended = true
         sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
         allowTransactionControl = false
+        budgetSuspended = false
     }
 
     // MARK: User statements
@@ -285,37 +369,67 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     }
 
     func bind(_ values: [SQLiteValue], to statement: OpaquePointer) throws(SQLiteError) {
-        let expected = Int(sqlite3_bind_parameter_count(statement))
-        guard values.count == expected else {
-            throw .invalidArgument("the statement has \(expected) parameters but \(values.count) values were bound")
-        }
+        try checkParameterCount(values.count, statement)
         let hardCap = configuration.limits.hardMaxResultBytes
-        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
             let rc: Int32
             switch value {
-            case .null:
-                rc = sqlite3_bind_null(statement, index)
-            case .integer(let v):
-                rc = sqlite3_bind_int64(statement, index, v)
-            case .real(let v):
-                rc = sqlite3_bind_double(statement, index, v)
+            case .null: rc = sqlite3_bind_null(statement, index)
+            case .integer(let v): rc = sqlite3_bind_int64(statement, index, v)
+            case .real(let v): rc = sqlite3_bind_double(statement, index, v)
             case .text(let s):
                 let count = s.utf8.count
                 guard count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
-                rc = s.withCString { sqlite3_bind_text(statement, index, $0, Int32(count), transient) }
+                rc = s.withCString { sqlite3_bind_text(statement, index, $0, Int32(count), Self.transient) }
             case .blob(let bytes):
-                guard bytes.count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
-                if bytes.isEmpty {
-                    rc = sqlite3_bind_zeroblob(statement, index, 0)
-                } else {
-                    rc = bytes.withUnsafeBytes {
-                        sqlite3_bind_blob(statement, index, $0.baseAddress, Int32($0.count), transient)
-                    }
-                }
+                rc = try Self.bindBytes(bytes, text: false, statement, index, hardCap: hardCap)
             }
             guard rc == SQLITE_OK else { throw error(rc) }
+        }
+    }
+
+    func bind(_ values: [SQLiteRawValue], to statement: OpaquePointer) throws(SQLiteError) {
+        try checkParameterCount(values.count, statement)
+        let hardCap = configuration.limits.hardMaxResultBytes
+        for (offset, value) in values.enumerated() {
+            let index = Int32(offset + 1)
+            let rc: Int32
+            switch value {
+            case .null: rc = sqlite3_bind_null(statement, index)
+            case .integer(let v): rc = sqlite3_bind_int64(statement, index, v)
+            case .real(let v): rc = sqlite3_bind_double(statement, index, v)
+            case .text(let bytes): rc = try Self.bindBytes(bytes, text: true, statement, index, hardCap: hardCap)
+            case .blob(let bytes): rc = try Self.bindBytes(bytes, text: false, statement, index, hardCap: hardCap)
+            }
+            guard rc == SQLITE_OK else { throw error(rc) }
+        }
+    }
+
+    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private func checkParameterCount(_ count: Int, _ statement: OpaquePointer) throws(SQLiteError) {
+        let expected = Int(sqlite3_bind_parameter_count(statement))
+        guard count == expected else {
+            throw .invalidArgument("the statement has \(expected) parameters but \(count) values were bound")
+        }
+    }
+
+    /// Binds bytes as TEXT or BLOB with an explicit length, so embedded NUL bytes and
+    /// invalid UTF-8 are kept.
+    private static func bindBytes(
+        _ bytes: [UInt8], text: Bool, _ statement: OpaquePointer, _ index: Int32, hardCap: Int
+    ) throws(SQLiteError) -> Int32 {
+        guard bytes.count <= hardCap else { throw .resultTooLarge(limit: hardCap) }
+        if bytes.isEmpty {
+            return text ? sqlite3_bind_text(statement, index, "", 0, transient) : sqlite3_bind_zeroblob(statement, index, 0)
+        }
+        return bytes.withUnsafeBytes { buffer -> Int32 in
+            if text {
+                return sqlite3_bind_text(
+                    statement, index, buffer.baseAddress!.assumingMemoryBound(to: CChar.self), Int32(buffer.count), transient)
+            }
+            return sqlite3_bind_blob(statement, index, buffer.baseAddress, Int32(buffer.count), transient)
         }
     }
 
@@ -326,12 +440,32 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         case SQLITE_FLOAT:
             return .real(sqlite3_column_double(statement, index))
         case SQLITE_TEXT:
-            let count = Int(sqlite3_column_bytes(statement, index))
             guard let pointer = sqlite3_column_text(statement, index) else { return .text("") }
+            let count = Int(sqlite3_column_bytes(statement, index))
             return .text(String(decoding: UnsafeBufferPointer(start: pointer, count: count), as: UTF8.self))
         case SQLITE_BLOB:
+            guard let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
             let count = Int(sqlite3_column_bytes(statement, index))
-            guard count > 0, let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
+            return .blob(Array(UnsafeRawBufferPointer(start: pointer, count: count)))
+        default:
+            return .null
+        }
+    }
+
+    static func rawColumnValue(_ statement: OpaquePointer, _ index: Int32) -> SQLiteRawValue {
+        switch sqlite3_column_type(statement, index) {
+        case SQLITE_INTEGER:
+            return .integer(sqlite3_column_int64(statement, index))
+        case SQLITE_FLOAT:
+            return .real(sqlite3_column_double(statement, index))
+        case SQLITE_TEXT:
+            // sqlite3_column_text first, then sqlite3_column_bytes (SQLite's documented order).
+            guard let pointer = sqlite3_column_text(statement, index) else { return .text([]) }
+            let count = Int(sqlite3_column_bytes(statement, index))
+            return .text(Array(UnsafeBufferPointer(start: pointer, count: count)))
+        case SQLITE_BLOB:
+            guard let pointer = sqlite3_column_blob(statement, index) else { return .blob([]) }
+            let count = Int(sqlite3_column_bytes(statement, index))
             return .blob(Array(UnsafeRawBufferPointer(start: pointer, count: count)))
         default:
             return .null
@@ -340,20 +474,37 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
     /// Steps a bound statement to completion within the given row and byte limits.
     func collectRows(_ statement: OpaquePointer, maxRows: Int, maxBytes: Int) throws(SQLiteError) -> [SQLiteRow] {
+        try collect(statement, maxRows: maxRows, maxBytes: maxBytes, decode: Self.columnValue) {
+            SQLiteRow(columnNames: $0, values: $1)
+        }
+    }
+
+    /// Like ``collectRows(_:maxRows:maxBytes:)``, keeping the exact stored bytes.
+    func collectRawRows(_ statement: OpaquePointer, maxRows: Int, maxBytes: Int) throws(SQLiteError) -> [SQLiteRawRow] {
+        try collect(statement, maxRows: maxRows, maxBytes: maxBytes, decode: Self.rawColumnValue) {
+            SQLiteRawRow(columnNames: $0, values: $1)
+        }
+    }
+
+    private func collect<Value, Row>(
+        _ statement: OpaquePointer, maxRows: Int, maxBytes: Int,
+        decode: (OpaquePointer, Int32) -> Value,
+        makeRow: ([String], [Value]) -> Row
+    ) throws(SQLiteError) -> [Row] {
         let columnCount = sqlite3_column_count(statement)
         var names: [String] = []
         names.reserveCapacity(Int(columnCount))
         for index in 0..<columnCount {
             names.append(sqlite3_column_name(statement, index).map { String(cString: $0) } ?? "")
         }
-        var rows: [SQLiteRow] = []
+        var rows: [Row] = []
         var totalBytes = 0
         while true {
             let rc = sqlite3_step(statement)
             if rc == SQLITE_DONE { break }
             guard rc == SQLITE_ROW else { throw error(rc) }
             guard rows.count < maxRows else { throw .rowLimitExceeded(limit: maxRows) }
-            var values: [SQLiteValue] = []
+            var values: [Value] = []
             values.reserveCapacity(Int(columnCount))
             for index in 0..<columnCount {
                 let type = sqlite3_column_type(statement, index)
@@ -365,9 +516,9 @@ final class SQLiteConnectionCore: @unchecked Sendable {
                 }
                 totalBytes += size
                 guard totalBytes <= maxBytes else { throw .resultTooLarge(limit: maxBytes) }
-                values.append(Self.columnValue(statement, index))
+                values.append(decode(statement, index))
             }
-            rows.append(SQLiteRow(columnNames: names, values: values))
+            rows.append(makeRow(names, values))
         }
         return rows
     }
@@ -375,6 +526,11 @@ final class SQLiteConnectionCore: @unchecked Sendable {
 
 private func rejectingCommitHook(_: UnsafeMutableRawPointer?) -> Int32 {
     1
+}
+
+private func progressCallback(_ context: UnsafeMutableRawPointer?) -> Int32 {
+    guard let context else { return 0 }
+    return Unmanaged<SQLiteConnectionCore>.fromOpaque(context).takeUnretainedValue().onProgress()
 }
 
 private func busyCallback(_ context: UnsafeMutableRawPointer?, _ attempt: Int32) -> Int32 {
@@ -412,21 +568,24 @@ final class SQLiteConnection: Sendable {
     }
 
     /// Runs `body` on this connection's thread and waits for it without blocking the
-    /// cooperative pool. Task cancellation sets the job's flag and calls
-    /// `sqlite3_interrupt` if the job is running.
+    /// cooperative pool. Task cancellation latches the job's stop cause and calls
+    /// `sqlite3_interrupt` if the job is running. The token's deadline and
+    /// instruction budget are enforced by the busy and progress handlers.
     func run<T: Sendable>(
+        token: SQLiteJobToken = SQLiteJobToken(),
         _ body: @escaping @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
-        let token = SQLiteJobToken()
         let core = self.core
         let result: Result<T, SQLiteError> = await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Result<T, SQLiteError>, Never>) in
                 let accepted = worker.enqueue {
                     core.interrupt.withLock { $0.current = token }
                     core.activeToken = token
+                    core.instructionsUsed = 0
                     let outcome: Result<T, SQLiteError>
-                    if token.isCancelled {
-                        outcome = .failure(.interrupted)
+                    token.checkDeadline()
+                    if let stop = token.stopError {
+                        outcome = .failure(stop)
                     } else {
                         outcome = Result { () throws(SQLiteError) -> T in try body(core) }
                     }

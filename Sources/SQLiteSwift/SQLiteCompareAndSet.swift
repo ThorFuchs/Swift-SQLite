@@ -56,7 +56,7 @@ extension SQLiteTransaction {
         alsoRequire: SQLitePredicate? = nil
     ) throws(SQLiteError) -> SQLiteCompareAndSetResult {
         guard kind == .write else {
-            throw .readOnly(SQLiteErrorDetails(code: .readOnly, message: "compareAndSet needs a write transaction"))
+            throw .readOnly("compareAndSet needs a write transaction")
         }
         guard expectedVersion < Int64.max else {
             throw .invalidArgument("expectedVersion is at Int64.max and cannot be incremented")

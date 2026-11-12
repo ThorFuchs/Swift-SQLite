@@ -6,12 +6,12 @@ internal import CSQLiteSwift
 internal import SQLite3
 #endif
 
-/// An open transaction, passed to the closures of ``SQLiteDatabase/read(_:)`` and
-/// ``SQLiteDatabase/write(_:)``.
+/// An open transaction, passed to the closures of ``SQLiteDatabase/read(limits:_:)`` and
+/// ``SQLiteDatabase/write(limits:_:)``.
 ///
 /// A transaction is valid only inside its closure and only on the thread that calls
 /// the closure; it isn't `Sendable`. Using it afterwards throws
-/// ``SQLiteError/misuse(_:)``. Transaction control statements (`BEGIN`, `COMMIT`,
+/// ``SQLiteError/Code/misuse``. Transaction control statements (`BEGIN`, `COMMIT`,
 /// `ROLLBACK`) are refused; SQLiteSwift owns the transaction. `SAVEPOINT` is allowed.
 public final class SQLiteTransaction {
     /// Whether a transaction may write.
@@ -43,13 +43,12 @@ public final class SQLiteTransaction {
         guard isValid else {
             throw .misuse("a transaction was used after its closure returned")
         }
-        try core.checkCancelled()
+        try core.checkStop()
     }
 
     private func checkWritable(_ statement: OpaquePointer) throws(SQLiteError) {
         if kind == .read, sqlite3_stmt_readonly(statement) == 0 {
-            throw .readOnly(SQLiteErrorDetails(
-                code: .readOnly, message: "a read transaction cannot run statements that write"))
+            throw .readOnly("a read transaction cannot run statements that write")
         }
     }
 
@@ -79,11 +78,15 @@ public final class SQLiteTransaction {
         defer { core.release(statement, isCached: isCached) }
         try checkWritable(statement)
         try core.bind(bindings, to: statement)
+        return try stepToCompletion(statement)
+    }
+
+    private func stepToCompletion(_ statement: OpaquePointer) throws(SQLiteError) -> SQLiteChanges {
         while true {
             let rc = sqlite3_step(statement)
             if rc == SQLITE_DONE { break }
             guard rc == SQLITE_ROW else { throw core.error(rc) }
-            try core.checkCancelled()
+            try core.checkStop()
         }
         let db = try core.handle()
         return SQLiteChanges(
@@ -108,12 +111,11 @@ public final class SQLiteTransaction {
                 guard let statement else { continue }  // whitespace or comment
                 defer { sqlite3_finalize(statement) }
                 if kind == .read, sqlite3_stmt_readonly(statement) == 0 {
-                    failure = .readOnly(SQLiteErrorDetails(
-                        code: .readOnly, message: "a read transaction cannot run statements that write"))
+                    failure = .readOnly("a read transaction cannot run statements that write")
                     return
                 }
                 while true {
-                    if core.activeToken?.isCancelled == true { failure = .interrupted; return }
+                    if let stop = core.pendingStop() { failure = stop; return }
                     let step = sqlite3_step(statement)
                     if step == SQLITE_DONE { break }
                     guard step == SQLITE_ROW else { failure = core.error(step); return }
@@ -125,8 +127,8 @@ public final class SQLiteTransaction {
 
     /// Runs a query and returns all rows, within row and byte limits.
     ///
-    /// More rows than the row limit throw ``SQLiteError/rowLimitExceeded(limit:)``;
-    /// more bytes than the byte budget throw ``SQLiteError/resultTooLarge(limit:)``.
+    /// More rows than the row limit throw ``SQLiteError/Code/rowLimitExceeded``;
+    /// more bytes than the byte budget throw ``SQLiteError/Code/resultTooLarge``.
     /// Results are never silently truncated.
     public func query(
         _ sql: String, _ bindings: [SQLiteValue] = [], limits: SQLiteQueryLimits? = nil
@@ -138,6 +140,36 @@ public final class SQLiteTransaction {
         try checkWritable(statement)
         try core.bind(bindings, to: statement)
         return try core.collectRows(statement, maxRows: maxRows, maxBytes: maxBytes)
+    }
+
+    /// Runs one statement with raw bindings, which keep exact TEXT bytes (including
+    /// invalid UTF-8 and embedded NUL).
+    @discardableResult
+    public func executeRaw(_ sql: String, _ bindings: [SQLiteRawValue]) throws(SQLiteError) -> SQLiteChanges {
+        try ensureUsable()
+        let (statement, isCached) = try core.prepare(sql, cached: true)
+        defer { core.release(statement, isCached: isCached) }
+        try checkWritable(statement)
+        try core.bind(bindings, to: statement)
+        return try stepToCompletion(statement)
+    }
+
+    /// Runs a query and returns rows with the exact stored bytes, within row and byte
+    /// limits.
+    ///
+    /// TEXT comes back as ``SQLiteRawValue/text(_:)`` bytes, exactly as stored,
+    /// including invalid UTF-8 and embedded NUL bytes; nothing is decoded or repaired.
+    /// Limits work as in ``query(_:_:limits:)``.
+    public func queryRaw(
+        _ sql: String, _ bindings: [SQLiteRawValue] = [], limits: SQLiteQueryLimits? = nil
+    ) throws(SQLiteError) -> [SQLiteRawRow] {
+        try ensureUsable()
+        let (maxRows, maxBytes) = try resolve(limits)
+        let (statement, isCached) = try core.prepare(sql, cached: true)
+        defer { core.release(statement, isCached: isCached) }
+        try checkWritable(statement)
+        try core.bind(bindings, to: statement)
+        return try core.collectRawRows(statement, maxRows: maxRows, maxBytes: maxBytes)
     }
 
     /// Runs a query expected to return at most one row.
@@ -162,7 +194,7 @@ public final class SQLiteTransaction {
     /// into memory. Both queries run in this transaction's snapshot.
     ///
     /// - Returns: The bytes, or `nil` if no row matches or the column is NULL.
-    /// - Throws: ``SQLiteError/resultTooLarge(limit:)`` if the value is larger than
+    /// - Throws: ``SQLiteError/Code/resultTooLarge`` if the value is larger than
     ///   `maxBytes` (default: ``SQLiteLimits/defaultMaxResultBytes``).
     public func readBlob(
         table: SQLiteIdentifier,

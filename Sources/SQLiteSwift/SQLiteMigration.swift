@@ -60,7 +60,7 @@ extension SQLiteConnectionCore {
         let supported = migrations.count
         let start = try checkSchemaVersion(supported: supported)
         for migration in migrations where migration.version > start {
-            try checkCancelled()
+            try checkStop()
             try execInternal("BEGIN IMMEDIATE")
             do throws(SQLiteError) {
                 // Re-read inside the write lock: another process may have migrated.
@@ -77,7 +77,7 @@ extension SQLiteConnectionCore {
                     throw SQLiteError.migrationFailed(
                         version: migration.version, name: migration.name, underlying: error)
                 }
-                try checkCancelled()
+                try checkStop()
                 try execInternal("PRAGMA user_version = \(migration.version)")
                 do throws(SQLiteError) {
                     try commitTransaction()

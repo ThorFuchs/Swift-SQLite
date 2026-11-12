@@ -96,17 +96,17 @@ struct DatabaseTests {
             let unique = await caught {
                 try await database.write { (tx) throws(SQLiteError) in try tx.execute("INSERT INTO items (name) VALUES ('a')") }
             }
-            guard case .constraint(let details) = unique else {
+            guard let uniqueDetails = details(unique, .constraint) else {
                 Issue.record("expected .constraint, got \(String(describing: unique))"); return
             }
-            #expect(details.code.rawValue == 2067)  // SQLITE_CONSTRAINT_UNIQUE
-            #expect(details.code.primary == .constraint)
+            #expect(uniqueDetails.code.rawValue == 2067)  // SQLITE_CONSTRAINT_UNIQUE
+            #expect(uniqueDetails.code.primary == .constraint)
             let foreignKey = await caught {
                 try await database.write { (tx) throws(SQLiteError) in
                     try tx.execute("INSERT INTO tags (item_id, tag) VALUES (999, 'x')")
                 }
             }
-            guard case .constraint(let fk) = foreignKey else {
+            guard let fk = details(foreignKey, .constraint) else {
                 Issue.record("expected FK .constraint, got \(String(describing: foreignKey))"); return
             }
             #expect(fk.code.rawValue == 787)  // SQLITE_CONSTRAINT_FOREIGNKEY
@@ -139,11 +139,11 @@ struct DatabaseTests {
             let readWrite = await caught {
                 try await database.read { (tx) throws(SQLiteError) in try tx.execute("INSERT INTO items (name) VALUES ('x')") }
             }
-            guard case .readOnly = readWrite else { Issue.record("got \(String(describing: readWrite))"); return }
+            guard code(readWrite) == .readOnly else { Issue.record("got \(String(describing: readWrite))"); return }
             let scriptWrite = await caught {
                 try await database.read { (tx) throws(SQLiteError) in try tx.executeScript("DELETE FROM items;") }
             }
-            guard case .readOnly = scriptWrite else { Issue.record("got \(String(describing: scriptWrite))"); return }
+            guard code(scriptWrite) == .readOnly else { Issue.record("got \(String(describing: scriptWrite))"); return }
             for statement in ["COMMIT", "BEGIN", "ROLLBACK"] {
                 let error = await caught {
                     try await database.write { (tx) throws(SQLiteError) in try tx.execute(statement) }
@@ -160,11 +160,11 @@ struct DatabaseTests {
             let multiple = await caught {
                 try await database.write { (tx) throws(SQLiteError) in try tx.execute("SELECT 1; SELECT 2") }
             }
-            guard case .invalidArgument = multiple else { Issue.record("got \(String(describing: multiple))"); return }
+            guard code(multiple) == .invalidArgument else { Issue.record("got \(String(describing: multiple))"); return }
             let wrongCount = await caught {
                 try await database.write { (tx) throws(SQLiteError) in try tx.execute("SELECT ?", []) }
             }
-            guard case .invalidArgument = wrongCount else { Issue.record("got \(String(describing: wrongCount))"); return }
+            guard code(wrongCount) == .invalidArgument else { Issue.record("got \(String(describing: wrongCount))"); return }
         }
     }
 
@@ -179,7 +179,7 @@ struct DatabaseTests {
                     try box.transaction!.execute("SELECT 1")
                 }
             }
-            guard case .misuse = error else { Issue.record("got \(String(describing: error))"); return }
+            guard code(error) == .misuse else { Issue.record("got \(String(describing: error))"); return }
         }
     }
 
@@ -247,7 +247,7 @@ struct DatabaseTests {
             fclose(file)
         }
         let error = await caught { try await SQLiteDatabase.open(SQLiteConfiguration(path: path), migrations: []) }
-        guard case .corrupt(let details) = error else { Issue.record("got \(String(describing: error))"); return }
+        guard let details = details(error, .corrupt) else { Issue.record("got \(String(describing: error))"); return }
         #expect(details.code.primary == .notADatabase)
     }
 
@@ -256,7 +256,7 @@ struct DatabaseTests {
         func refused(_ change: (inout SQLiteConfiguration) -> Void) async -> Bool {
             var configuration = SQLiteConfiguration(path: "/nonexistent-dir/never.sqlite")
             change(&configuration)
-            guard case .invalidConfiguration? = await caught({ try await SQLiteDatabase.open(configuration, migrations: []) })
+            guard await code(caught({ try await SQLiteDatabase.open(configuration, migrations: []) })) == .invalidConfiguration
             else { return false }
             return true
         }
@@ -272,7 +272,7 @@ struct DatabaseTests {
         #expect(await refused { $0.storage = .inMemory })  // readerCount 4
         let gap = [SQLiteMigration(version: 1, name: "a", sql: ""), SQLiteMigration(version: 3, name: "c", sql: "")]
         let error = await caught { try await SQLiteDatabase.open(.inMemory(), migrations: gap) }
-        guard case .invalidConfiguration = error else { Issue.record("got \(String(describing: error))"); return }
+        guard code(error) == .invalidConfiguration else { Issue.record("got \(String(describing: error))"); return }
     }
 
     @Test("File-protection classes map to Apple's SQLITE_OPEN_FILEPROTECTION_* values")
@@ -296,19 +296,19 @@ struct DatabaseTests {
     @Test("Result codes map to typed errors")
     func errorMapping() {
         func kind(_ code: Int32) -> SQLiteError { SQLiteError.make(code: code, message: "m") }
-        guard case .busy = kind(5), case .busy = kind(6), case .busy = kind(261) else { Issue.record("busy"); return }
-        guard case .constraint = kind(2067), case .corrupt = kind(11), case .corrupt = kind(26) else {
+        guard code(kind(5)) == .busy, code(kind(6)) == .busy, code(kind(261)) == .busy else { Issue.record("busy"); return }
+        guard code(kind(2067)) == .constraint, code(kind(11)) == .corrupt, code(kind(26)) == .corrupt else {
             Issue.record("constraint/corrupt"); return
         }
-        guard case .full = kind(13), case .readOnly = kind(8), case .tooBig = kind(18) else {
+        guard code(kind(13)) == .full, code(kind(8)) == .readOnly, code(kind(18)) == .tooBig else {
             Issue.record("full/readOnly/tooBig"); return
         }
         #expect(kind(9) == .interrupted)
-        guard case .ioError(let io) = kind(266) else { Issue.record("ioerr"); return }  // SQLITE_IOERR_READ
+        guard let io = details(kind(266), .ioError) else { Issue.record("ioerr"); return }  // SQLITE_IOERR_READ
         #expect(io.code.primary == .ioError)
-        guard case .sqlite(let other) = kind(1) else { Issue.record("generic"); return }  // SQLITE_ERROR
+        guard let other = details(kind(1), .sqlite) else { Issue.record("generic"); return }  // SQLITE_ERROR
         #expect(other.code.rawValue == 1)
-        #expect(SQLiteError.full(SQLiteErrorDetails(code: .full, message: "x")).resultCode == .full)
+        #expect(SQLiteError.sqlite(code: .full, message: "x").resultCode == .full)
         #expect(SQLiteError.migrationFailed(version: 1, name: "a", underlying: .interrupted).resultCode == .interrupt)
     }
 }
