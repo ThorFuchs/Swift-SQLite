@@ -71,6 +71,9 @@ public final class SQLiteModel<Record: SQLiteRecord> {
     /// Counts local edits only. Applying a stored row never changes it.
     @ObservationIgnored var editGeneration = 0
     @ObservationIgnored var savingGeneration = 0
+    /// Counts local transitions (saves, resolutions, deletions). A row read before
+    /// one of them is not applied after it.
+    @ObservationIgnored var epoch = 0
     @ObservationIgnored weak var context: SQLiteModelContext?
 
     init(snapshot: SQLiteRecordSnapshot<Record>, context: SQLiteModelContext) {
@@ -106,6 +109,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
         guard let remote, !isDeletedRemotely else {
             throw .misuse("\(Record.self) \(id) was deleted remotely and can't be kept; use discard() or useRemote()")
         }
+        epoch &+= 1
         baseline = remote
         self.remote = nil
         state = .dirty
@@ -122,6 +126,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
         case .conflicted:
             takeRemote()
         case .dirty:
+            epoch &+= 1
             isMarkedForDeletion = false
             if let baseline {
                 working = baseline.value
@@ -133,6 +138,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
     }
 
     private func takeRemote() {
+        epoch &+= 1
         isMarkedForDeletion = false
         if isDeletedRemotely || remote == nil {
             markDeleted()
@@ -149,6 +155,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
     func markForDeletion() throws(SQLiteError) {
         switch state {
         case .clean, .dirty:
+            epoch &+= 1
             if baseline == nil {
                 markDeleted()
             } else {
@@ -161,6 +168,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
     }
 
     func markDeleted() {
+        epoch &+= 1
         state = .deleted
         remote = nil
         context?.unregister(Record.self, id: id)
@@ -170,6 +178,12 @@ public final class SQLiteModel<Record: SQLiteRecord> {
 
     /// Applies a stored row (or its absence) read after the handle was loaded.
     func applyRemote(_ snapshot: SQLiteRecordSnapshot<Record>?) {
+        // Never step back to an older revision of the same row.
+        if let snapshot, let known = remote ?? baseline,
+           known.version.incarnation == snapshot.version.incarnation,
+           snapshot.version.revision < known.version.revision {
+            return
+        }
         switch state {
         case .clean:
             guard let snapshot else {
@@ -236,6 +250,7 @@ public final class SQLiteModel<Record: SQLiteRecord> {
             write = .save(value, expecting: .absent, incarnation: incarnation)
             known = SQLiteRecordSnapshot(value: value, version: try SQLiteRecordVersion(revision: 1, incarnation: incarnation))
         }
+        epoch &+= 1
         state = .saving
         savingGeneration = generation
         return CapturedWrite(
@@ -247,7 +262,10 @@ public final class SQLiteModel<Record: SQLiteRecord> {
                 }
             },
             committedWithoutReport: { self.didCommit(known, generation: generation) },
-            notCommitted: { self.state = .dirty },
+            notCommitted: {
+                self.epoch &+= 1
+                self.state = .dirty
+            },
             conflicted: { report in
                 switch report.outcome(as: Record.self) {
                 case .conflict(let current):
@@ -259,14 +277,19 @@ public final class SQLiteModel<Record: SQLiteRecord> {
                 default:
                     break
                 }
+                self.epoch &+= 1
                 self.state = .conflicted
             },
-            indeterminate: { self.state = .indeterminate },
+            indeterminate: {
+                self.epoch &+= 1
+                self.state = .indeterminate
+            },
             refresh: { (context) throws(SQLiteError) in try await context.refresh(self) })
     }
 
     /// `snapshot` is the stored row after the save, or `nil` for a deletion.
     private func didCommit(_ snapshot: SQLiteRecordSnapshot<Record>?, generation: Int) {
+        epoch &+= 1
         guard let snapshot else {
             markDeleted()
             return
@@ -281,6 +304,30 @@ public final class SQLiteModel<Record: SQLiteRecord> {
             state = .dirty
         }
     }
+}
+
+extension SQLiteModel {
+    /// A read of this handle's row that is applied only if no local transition
+    /// happened in between.
+    func remoteRead() -> RemoteRead {
+        let id = self.id
+        let epoch = self.epoch
+        return RemoteRead(
+            fetch: { (tx) throws(SQLiteError) in Fetched(snapshot: try tx.fetch(Record.self, id: id)) },
+            apply: { fetched in
+                guard self.epoch == epoch, let fetched = fetched as? Fetched else { return }
+                self.applyRemote(fetched.snapshot)
+            })
+    }
+
+    private struct Fetched: Sendable {
+        let snapshot: SQLiteRecordSnapshot<Record>?
+    }
+}
+
+struct RemoteRead {
+    let fetch: @Sendable (SQLiteTransaction) throws(SQLiteError) -> any Sendable
+    let apply: @MainActor (any Sendable) -> Void
 }
 
 /// One handle's part of a save, with what to do for each outcome.

@@ -29,6 +29,10 @@
   in `resyncRequired`, and cleanup on cancel and close. `SQLiteModelSchema` moved to
   `SQLiteSwiftModels` and adds the sequence table; `SQLiteModelContext` is created
   from a store.
+- Model layer, gate G5: `SQLiteModelContext.observeChanges()` keeps handles
+  current with other writers' saves (clean handles update, dirty ones keep their
+  draft and become conflicted, remote deletions are shown) and resyncs when asked;
+  `SQLiteLiveQuery` keeps a filtered, observable result list current per table.
 
 ## 0.9.0 — unreleased
 

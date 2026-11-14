@@ -73,6 +73,8 @@ public final class SQLiteModelContext {
     }
 
     private var handles: [Key: AnyObject] = [:]
+    /// Per table, per record type: the key of a change, if it decodes.
+    private var decoders: [String: [ObjectIdentifier: (SQLiteRecordChange) -> AnyHashable?]] = [:]
     private var order: [Key] = []
     private var saveInProgress = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -155,9 +157,92 @@ public final class SQLiteModelContext {
     ///   ``SQLiteModel/State/conflicted``.
     /// - A handle being saved, or with an unknown save, is left alone.
     public func refresh<Record: SQLiteRecord>(_ model: SQLiteModel<Record>) async throws(SQLiteError) {
-        let id = model.id
-        let snapshot = try await database.read { (tx) throws(SQLiteError) in try tx.fetch(Record.self, id: id) }
-        model.applyRemote(snapshot)
+        try await refresh([model.remoteRead()])
+    }
+
+    /// Reads the rows of `reads` in one read transaction and applies them.
+    private func refresh(_ reads: [RemoteRead]) async throws(SQLiteError) {
+        guard !reads.isEmpty else { return }
+        let fetches = reads.map(\.fetch)
+        let rows = try await database.read { (tx) throws(SQLiteError) -> [any Sendable] in
+            var rows: [any Sendable] = []
+            for fetch in fetches { rows.append(try fetch(tx)) }
+            return rows
+        }
+        for (read, row) in zip(reads, rows) { read.apply(row) }
+    }
+
+    // MARK: Observing changes
+
+    /// Keeps the context's handles up to date with the store's committed changes
+    /// until the calling task is cancelled.
+    ///
+    /// Run it for as long as the context is shown, for example in a SwiftUI
+    /// `.task { try? await context.observeChanges() }`. For every batch saved
+    /// through the store by someone else (another context, `writeRecords`), the
+    /// handles of the changed records read their row again:
+    ///
+    /// - a clean handle takes the new value, or becomes ``SQLiteModel/State/deleted``
+    ///   and leaves the context if the row was deleted;
+    /// - a dirty handle keeps its draft and becomes ``SQLiteModel/State/conflicted``;
+    /// - a handle being saved is left alone.
+    ///
+    /// If the stream asks for a resync (a full buffer or an unknown commit
+    /// elsewhere), every handle is read again and observation goes on. Writes that
+    /// don't go through the store are not seen until a refresh.
+    public func observeChanges(bufferSize: Int = 1024) async throws(SQLiteError) {
+        while !Task.isCancelled {
+            let (_, changes) = try await store.subscribe(bufferSize: bufferSize) { (_) throws(SQLiteError) in () }
+            // Rows committed before the subscription started are caught here.
+            try await refresh(order.compactMap { (handles[$0] as? any ManagedModel)?.makeRemoteRead() })
+            observationProgressed()
+            for await event in changes {
+                switch event {
+                case .committed(let change):
+                    if change.origin != origin { try await apply(change) }
+                    lastAppliedSequence = change.sequence
+                case .resyncRequired:
+                    resyncCount += 1
+                }
+                observationProgressed()
+            }
+        }
+    }
+
+    private func apply(_ change: SQLiteCommittedChange) async throws(SQLiteError) {
+        var reads: [RemoteRead] = []
+        for record in change.changes {
+            guard let types = decoders[record.table] else { continue }
+            for (type, decode) in types {
+                guard let id = decode(record), let model = handles[Key(type: type, id: id)] as? any ManagedModel else {
+                    continue
+                }
+                if record.kind != .deleted, let version = record.version, model.knownVersion == version {
+                    continue  // already known
+                }
+                reads.append(model.makeRemoteRead())
+            }
+        }
+        try await refresh(reads)
+    }
+
+    // Observation progress, for tests.
+    var lastAppliedSequence: Int64 = 0
+    var resyncCount = 0
+    private var progressWaiters: [(condition: () -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
+
+    /// Suspends until `condition` holds after an observation step.
+    func waitForObservationForTesting(_ condition: @escaping () -> Bool) async {
+        if condition() { return }
+        await withCheckedContinuation { progressWaiters.append((condition, $0)) }
+    }
+
+    private func observationProgressed() {
+        var remaining: [(condition: () -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
+        for waiter in progressWaiters {
+            if waiter.condition() { waiter.continuation.resume() } else { remaining.append(waiter) }
+        }
+        progressWaiters = remaining
     }
 
     /// Removes a handle from the context. Its unsaved edits are dropped.
@@ -176,6 +261,9 @@ public final class SQLiteModelContext {
     private func register<Record: SQLiteRecord>(_ model: SQLiteModel<Record>, key: Key) {
         handles[key] = model
         order.append(key)
+        decoders[Record.descriptor.table.name, default: [:]][ObjectIdentifier(Record.self)] = { change in
+            change.id(as: Record.self).map(AnyHashable.init)
+        }
     }
 
     func unregister<Record: SQLiteRecord>(_ type: Record.Type, id: Record.ID) {
@@ -211,7 +299,7 @@ public final class SQLiteModelContext {
         var captures: [CapturedWrite] = []
         do throws(SQLiteError) {
             for key in order {
-                if let capture = try (handles[key] as? any CapturableModel)?.captureForSave() {
+                if let capture = try (handles[key] as? any ManagedModel)?.captureForSave() {
                     captures.append(capture)
                 }
             }
@@ -329,10 +417,14 @@ public final class SQLiteModelContext {
 }
 
 @MainActor
-protocol CapturableModel: AnyObject {
+protocol ManagedModel: AnyObject {
     func captureForSave() throws(SQLiteError) -> CapturedWrite?
+    func makeRemoteRead() -> RemoteRead
+    var knownVersion: SQLiteRecordVersion? { get }
 }
 
-extension SQLiteModel: CapturableModel {
+extension SQLiteModel: ManagedModel {
     func captureForSave() throws(SQLiteError) -> CapturedWrite? { try capture() }
+    func makeRemoteRead() -> RemoteRead { remoteRead() }
+    var knownVersion: SQLiteRecordVersion? { (remote ?? baseline)?.version }
 }

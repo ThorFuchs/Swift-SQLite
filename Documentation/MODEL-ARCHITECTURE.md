@@ -218,6 +218,21 @@ subscribes again for a new snapshot. `SQLiteModelSchema` moved to
 `SQLiteSwiftModels` and now also creates `sqliteswift_model_sequence`. A
 `SQLiteModelContext` is created from a store (`init(store:)`).
 
+As built in G5: `SQLiteModelContext.observeChanges()` keeps handles live until its
+task is cancelled (run it in a SwiftUI `.task`; no detached tasks). It skips its
+own origin and changes whose version the handle already knows, re-reads the other
+changed rows in one read transaction, and applies them with the existing rules
+(clean takes the row, dirty becomes conflicted, saving is left alone, deleted
+leaves the context). On `resyncRequired` it re-reads every handle and
+resubscribes. Two guards keep reads from going backwards: a handle never steps
+back to an older revision of the same incarnation, and a row read before a local
+transition (save, resolution, deletion) is dropped (handle epoch).
+`SQLiteLiveQuery<Record>` (`@Observable`) holds the snapshots matching a filter
+and re-reads them after every batch that touches its table (table-scoped, not
+row-scoped); `context.liveQuery(_:where:)` makes one. Per-record
+`observe(record:)` from the dossier is covered by live handles. A server-side
+(non-main-actor) live query is left for later.
+
 ### M8. Store-owned schema
 
 The store's tables (`sqliteswift_model_operations`, `sqliteswift_model_sequence`)
@@ -262,7 +277,7 @@ repository, so it is not compared here.
 | G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | done (see G2 report in its PR) |
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | done (see G3 report in its PR) |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | done (see G4 report in its PR) |
-| G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | design |
+| G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | done (see G5 report in its PR) |
 | G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | design |
 | G7 | optional: macro companion package; Hummingbird/SSE demo | outside this package | design |
 
