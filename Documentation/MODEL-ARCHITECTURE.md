@@ -123,6 +123,18 @@ outcome. There is no upsert without an expectation and no
 `writeOrRollback`: the first conflict rolls back the whole batch and names the
 record that conflicted.
 
+As built in G2: `SQLiteWriteExpectation` (`absent`, `version`) and
+`SQLiteRecordWriteOutcome` with `inserted`, `updated`, `deleted`,
+`conflict(current:)` and `missing`. `current` is not optional: a conflict always
+has a row, and a missing row is `missing`. There is no `retiredIdentity` case,
+because M3 drops the identity registry. Inserts check absence and insert in one
+statement, so the key is checked even without a unique constraint. Every applied
+write re-reads its row inside the transaction, so the snapshot is what is stored.
+An update at revision `Int64.max` throws `invalidArgument` instead of wrapping.
+Batches are a list of type-erased `SQLiteRecordWrite`s run by
+`SQLiteDatabase.writeRecords(_:)`, which returns `committed` with one report per
+write or `rolledBack(failure:)` with the write that stopped it.
+
 ### M5. Editing context
 
 `SQLiteModelContext` is `@MainActor`, context-local, and never global. It maps
@@ -220,7 +232,7 @@ repository, so it is not compared here.
 | --- | --- | --- | --- |
 | G0 | this document | baseline runs in section 1 | done |
 | G1 | `SQLiteSwiftModels`: record protocol, descriptors, codecs, snapshots, versions | three record types with different keys, nullable and BLOB fields round-trip; negative codec and schema tests | done (see G1 report in its PR) |
-| G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | design |
+| G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | done (see G2 report in its PR) |
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | design |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | design |
 | G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | design |

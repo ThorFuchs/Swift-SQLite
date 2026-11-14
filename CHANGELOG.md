@@ -12,6 +12,11 @@
   BLOB, timestamp, Unix milliseconds, optional, raw-value enums),
   `SQLiteRecordVersion` (revision and incarnation), `SQLiteRecordSnapshot`, and
   `fetch`, `fetchAll` and `verifySchema` on transactions.
+- Model layer, gate G2: conditional `insert`, `update`, `save(_:expecting:)` and
+  `delete` on transactions, returning `SQLiteRecordWriteOutcome` (`inserted`,
+  `updated`, `deleted`, `conflict(current:)`, `missing`); revision plus incarnation
+  checks, so a reused key never matches an old version; and all-or-nothing batches
+  with `SQLiteDatabase.writeRecords(_:)`.
 
 ## 0.9.0 — unreleased
 
