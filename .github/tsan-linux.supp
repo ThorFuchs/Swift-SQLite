@@ -6,10 +6,3 @@
 # comment at that line documents the race between threads opening databases at
 # the same instant as harmless (it can only reseed more than once).
 race:unixOpen
-
-# Swift's Synchronization.Mutex locks on Linux with futex system calls inside the
-# precompiled, uninstrumented standard library, so ThreadSanitizer cannot see the
-# lock and reports the protected accesses as races. Every reported access in these
-# types happens inside `withLock`. macOS ThreadSanitizer, which does see the lock
-# (os_unfair_lock), checks the same Swift code without suppressions.
-race:SlotPool

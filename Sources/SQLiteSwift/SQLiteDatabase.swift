@@ -5,7 +5,6 @@ internal import CSQLiteSwift
 #else
 internal import SQLite3
 #endif
-import Synchronization
 
 /// What a ``SQLiteDatabase/writeOrRollback(limits:_:)`` closure decided.
 ///
@@ -66,7 +65,7 @@ public final class SQLiteDatabase: Sendable {
         case closing([CheckedContinuation<Void, Never>])
         case closed
     }
-    private let lifecycle = Mutex(Lifecycle.open)
+    private let lifecycle = SQLiteLocked(Lifecycle.open)
 
     private init(
         configuration: SQLiteConfiguration, supportedSchemaVersion: Int,

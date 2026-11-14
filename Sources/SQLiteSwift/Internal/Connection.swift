@@ -90,7 +90,7 @@ struct InterruptibleHandle: @unchecked Sendable {
     let pointer: OpaquePointer
 }
 
-struct InterruptState: ~Copyable {
+struct InterruptState: Sendable {
     var current: SQLiteJobToken?
     var handle: InterruptibleHandle?
 }
@@ -112,7 +112,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     /// While `true`, the progress handler never stops a statement (commit, rollback).
     var budgetSuspended = false
     /// Shared with other threads; guards `sqlite3_interrupt`.
-    let interrupt = Mutex(InterruptState())
+    let interrupt = SQLiteLocked(InterruptState())
 
     init(role: ConnectionRole, configuration: SQLiteConfiguration) {
         self.role = role

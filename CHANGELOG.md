@@ -24,6 +24,16 @@ public use.
 - `.spi.yml` for the Swift Package Index (documentation for both products).
 - README for public use, with the versioning policy.
 
+### Fixed
+
+- SQLite is initialized once (`sqlite3_initialize()`) before connections open on
+  several threads at the same time; SQLite's implicit initialization inside
+  `sqlite3_open_v2` raced (found by ThreadSanitizer on Linux).
+- Internal locks use `pthread_mutex_t`, which ThreadSanitizer sees on every platform,
+  instead of `Synchronization.Mutex`, whose Linux futex lock it cannot see.
+- CI: Linux ThreadSanitizer runs with ASLR disabled; the one remaining known-benign
+  SQLite report and the XCTest runner's exit-time leaks are suppressed with reasons.
+
 ### Changed
 
 - Enums that will never gain cases say so in their documentation.
