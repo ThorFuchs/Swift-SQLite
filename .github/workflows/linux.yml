@@ -62,6 +62,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Test with Thread Sanitizer
-        run: setarch "$(uname -m)" -R swift test --sanitize=thread --scratch-path .build/tsan
+        # Known false positives (Swift Mutex on Linux, one benign SQLite race) are
+        # listed with their reasons in .github/tsan-linux.supp.
+        run: |
+          export TSAN_OPTIONS="suppressions=$PWD/.github/tsan-linux.supp"
+          setarch "$(uname -m)" -R swift test --sanitize=thread --scratch-path .build/tsan
       - name: Test with Address Sanitizer
-        run: swift test --sanitize=address --scratch-path .build/asan
+        # Leaks from the toolchain's XCTest runner are suppressed in
+        # .github/lsan-linux.supp; leaks in this package are still reported.
+        run: |
+          export LSAN_OPTIONS="suppressions=$PWD/.github/lsan-linux.supp"
+          swift test --sanitize=address --scratch-path .build/asan

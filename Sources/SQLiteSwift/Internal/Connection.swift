@@ -15,6 +15,10 @@ import Glibc
 import Musl
 #endif
 
+/// The result of the one-time `sqlite3_initialize()`. Swift initializes a global
+/// constant exactly once, thread-safely, on first use.
+private let sqliteInitialization: Int32 = sqlite3_initialize()
+
 enum ConnectionRole: Sendable, Equatable {
     case writer
     case reader(Int)
@@ -143,6 +147,11 @@ final class SQLiteConnectionCore: @unchecked Sendable {
     }
 
     func open() throws(SQLiteError) {
+        // Initialize SQLite once, before connections on several threads open at the
+        // same time; SQLite's implicit initialization inside sqlite3_open_v2 is racy.
+        guard sqliteInitialization == SQLITE_OK else {
+            throw SQLiteError.make(code: sqliteInitialization, message: "sqlite3_initialize failed")
+        }
         var handle: OpaquePointer?
         let flags = Self.openFlags(role: role, configuration: configuration)
         let rc = sqlite3_open_v2(path, &handle, flags, nil)

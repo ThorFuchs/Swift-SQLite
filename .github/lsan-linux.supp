@@ -1,0 +1,5 @@
+# LeakSanitizer suppressions for the Linux CI job only.
+# The toolchain's XCTest runner (libXCTest.so, XCTMainMisc) leaves a few indirect
+# allocations at process exit. Our tests use Swift Testing; leaks in SQLiteSwift
+# and the vendored SQLite engine are still reported.
+leak:libXCTest.so
