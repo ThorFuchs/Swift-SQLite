@@ -83,6 +83,12 @@ Rejected: three targets (observation split from models adds a boundary without a
 separate dependency); one target with `Observation` (would force it on server-only
 consumers).
 
+As done in G6: both targets are library products with DocC catalogs
+(`Scripts/build-docs.sh` builds all three modules; `.spi.yml` lists them), README
+and CHANGELOG entries. Shipping them is a release decision: merged before the
+1.0.0 tag, they join the 1.0 API freeze; merged after it, they arrive in 1.1.0 as
+M1 planned. Developer-kit recipes wait for the kit itself.
+
 ### M2. Manual record descriptors first
 
 A record is a plain `Sendable`, `Equatable` struct with an `ID`. A descriptor names
@@ -278,7 +284,7 @@ repository, so it is not compared here.
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | done (see G3 report in its PR) |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | done (see G4 report in its PR) |
 | G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | done (see G5 report in its PR) |
-| G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | design |
+| G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | done in its PR; the release itself is a separate decision |
 | G7 | optional: macro companion package; Hummingbird/SSE demo | outside this package | design |
 
 Each gate is one pull request. Each report lists the ref and files, the commands run

@@ -51,7 +51,7 @@ public enum SQLiteSaveResolution: Sendable, Hashable {
 /// ```
 ///
 /// A context belongs to one place in an app, such as a window; there is no global
-/// one. Server code should use transactions and ``SQLiteSwift/SQLiteDatabase/writeRecords(_:limits:)``
+/// one. Server code should use transactions and `SQLiteDatabase.writeRecords(_:limits:)`
 /// directly. Saves go through the store, so its change stream reports them with the
 /// context's ``origin``.
 ///
@@ -131,7 +131,7 @@ public final class SQLiteModelContext {
 
     /// A handle for a new record, inserted by the next save.
     ///
-    /// Throws ``SQLiteError/Code/misuse`` if the context already has a handle with
+    /// Throws `SQLiteError.Code.misuse` if the context already has a handle with
     /// this key. If the database has a row with the key, the save reports a conflict.
     public func insert<Record: SQLiteRecord>(_ value: Record) throws(SQLiteError) -> SQLiteModel<Record> {
         let key = Key(type: ObjectIdentifier(Record.self), id: AnyHashable(value.id))
@@ -282,11 +282,11 @@ public final class SQLiteModelContext {
     /// - Returns: ``SQLiteSaveResult/saved(count:)``, or
     ///   ``SQLiteSaveResult/conflict(_:)`` if a row changed since its handle read it.
     /// - Throws: Errors of the write (busy, deadline, constraint, …); the handles are
-    ///   dirty again with their edits. ``SQLiteError/Code/commitOutcomeUnknown`` if
+    ///   dirty again with their edits. `SQLiteError.Code.commitOutcomeUnknown` if
     ///   the commit may or may not have happened; the handles become
     ///   ``SQLiteModel/State/indeterminate`` and further saves throw
-    ///   ``SQLiteError/Code/misuse`` until ``resolveIndeterminate()``.
-    ///   ``SQLiteError/Code/interrupted`` if the task was cancelled before the write.
+    ///   `SQLiteError.Code.misuse` until ``resolveIndeterminate()``.
+    ///   `SQLiteError.Code.interrupted` if the task was cancelled before the write.
     @discardableResult
     public func save() async throws(SQLiteError) -> SQLiteSaveResult {
         await beginExclusive()

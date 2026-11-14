@@ -10,7 +10,7 @@ import SQLiteSwift
 /// share it.
 ///
 /// **Scope of the stream.** It reports batches written through this store in this
-/// process. Raw SQL, ``SQLiteSwift/SQLiteDatabase/writeRecords(_:limits:)`` called
+/// process. Raw SQL, `SQLiteDatabase.writeRecords(_:limits:)` called
 /// on the database directly, other `SQLiteDatabase` instances and other processes
 /// produce no events.
 ///
@@ -28,10 +28,14 @@ public final class SQLiteModelStore: Sendable {
     }
 
     /// Runs `writes` in order in one transaction, all or nothing, like
-    /// ``SQLiteSwift/SQLiteDatabase/writeRecords(_:limits:)``, and publishes the
+    /// `SQLiteDatabase.writeRecords(_:limits:)`, and publishes the
     /// committed batch.
     ///
-    /// - Parameter origin: Passed along in the published change.
+    /// - Parameters:
+    ///   - writes: The writes, in the order they run.
+    ///   - origin: Passed along in the published change.
+    ///   - limits: Time and instruction bounds for the transaction. `nil` uses the
+    ///     database's default.
     @discardableResult
     public func writeRecords(
         _ writes: [SQLiteRecordWrite], origin: SQLiteChangeOrigin? = nil, limits: SQLiteOperationLimits? = nil
@@ -99,6 +103,7 @@ public final class SQLiteModelStore: Sendable {
     /// - Parameters:
     ///   - bufferSize: How many undelivered events the subscription holds. One more
     ///     replaces them with ``SQLiteChangeEvent/resyncRequired``.
+    ///   - limits: Time and instruction bounds for the snapshot read.
     ///   - snapshot: Reads the state the events apply to.
     public func subscribe<T: Sendable>(
         bufferSize: Int = 1024, limits: SQLiteOperationLimits? = nil,

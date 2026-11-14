@@ -16,7 +16,7 @@ public enum SQLiteWriteExpectation: Sendable, Hashable {
 ///
 /// A conflict is a value, not an error, so callers decide what it means. Lock
 /// contention, deadlines, cancellation, constraint violations and
-/// ``SQLiteError/Code/commitOutcomeUnknown`` stay errors and are never folded into an
+/// `SQLiteError.Code.commitOutcomeUnknown` stay errors and are never folded into an
 /// outcome.
 ///
 /// The cases are complete; no case will be added.

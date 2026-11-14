@@ -33,6 +33,10 @@
   current with other writers' saves (clean handles update, dirty ones keep their
   draft and become conflicted, remote deletions are shown) and resyncs when asked;
   `SQLiteLiveQuery` keeps a filtered, observable result list current per table.
+- Model layer, gate G6: `SQLiteSwiftModels` and `SQLiteSwiftModelContext` are
+  library products, with DocC catalogs and guides ("Defining, reading and writing
+  records", "Editing with a context"). `Scripts/build-docs.sh` builds every
+  module's archive.
 
 ## 0.9.0 — unreleased
 

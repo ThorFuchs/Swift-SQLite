@@ -5,7 +5,7 @@ import SQLiteSwift
 extension SQLiteTransaction {
     /// Reads one record and its version, or `nil` if no row has this key.
     ///
-    /// A stored value that doesn't decode throws ``SQLiteError/Code/invalidStoredValue``
+    /// A stored value that doesn't decode throws `SQLiteError.Code.invalidStoredValue`
     /// naming the column; nothing is repaired or skipped.
     public func fetch<Record: SQLiteRecord>(
         _ type: Record.Type, id: Record.ID
@@ -20,7 +20,7 @@ extension SQLiteTransaction {
 
     /// Reads the records matching `filter`, in key order, within row and byte limits.
     ///
-    /// More rows than the limit throw ``SQLiteError/Code/rowLimitExceeded`` (results
+    /// More rows than the limit throw `SQLiteError.Code.rowLimitExceeded` (results
     /// are never truncated). Use `limits` to raise or lower the bound.
     public func fetchAll<Record: SQLiteRecord>(
         _ type: Record.Type,
@@ -45,7 +45,7 @@ extension SQLiteTransaction {
     }
 
     /// Checks that the record's table exists and has every mapped column plus the
-    /// revision and incarnation columns. Throws ``SQLiteError/Code/schemaMismatch``
+    /// revision and incarnation columns. Throws `SQLiteError.Code.schemaMismatch`
     /// otherwise. Extra columns are allowed.
     public func verifySchema<Record: SQLiteRecord>(for type: Record.Type) throws(SQLiteError) {
         let descriptor = Record.descriptor
