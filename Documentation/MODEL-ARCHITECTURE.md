@@ -46,7 +46,10 @@ release gate, independent of the model layer.
 ## 2. Core APIs the model layer builds on
 
 The model layer uses only public `SQLiteSwift` API. G1 to G5 need **no change to
-the core**:
+the core**, with one additive exception made in G1: two new `SQLiteError.Code`s,
+`schemaMismatch` and `invalidStoredValue` (with a `column` accessor), because codes
+can't be added from another module and a second error type would split error
+handling for consumers. Adding codes is not source-breaking (codes are a struct).
 
 | Need | Core API |
 | --- | --- |
@@ -216,7 +219,7 @@ repository, so it is not compared here.
 | Gate | Deliverable | Acceptance (executed, not reviewed) | Status |
 | --- | --- | --- | --- |
 | G0 | this document | baseline runs in section 1 | done |
-| G1 | `SQLiteSwiftModels`: record protocol, descriptors, codecs, snapshots, versions | three record types with different keys, nullable and BLOB fields round-trip; negative codec and schema tests | design |
+| G1 | `SQLiteSwiftModels`: record protocol, descriptors, codecs, snapshots, versions | three record types with different keys, nullable and BLOB fields round-trip; negative codec and schema tests | done (see G1 report in its PR) |
 | G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | design |
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | design |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | design |

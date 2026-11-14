@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `SQLiteError.Code.schemaMismatch` and `.invalidStoredValue` (with
+  `SQLiteError.column`), used by the model layer.
+- Model layer, gate G1 (internal target `SQLiteSwiftModels`, no product yet):
+  `SQLiteRecord`, `SQLiteRecordDescriptor` with typed `SQLiteColumn`s, strict
+  `SQLiteCodec`s (text, BLOB, integer, Int, Bool, REAL, decimal text, UUID as text or
+  BLOB, timestamp, Unix milliseconds, optional, raw-value enums),
+  `SQLiteRecordVersion` (revision and incarnation), `SQLiteRecordSnapshot`, and
+  `fetch`, `fetchAll` and `verifySchema` on transactions.
+
 ## 0.9.0 — unreleased
 
 Release candidate for 1.0.0: the API is frozen, and the repository is ready for
