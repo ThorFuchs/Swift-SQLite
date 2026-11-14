@@ -157,6 +157,18 @@ conflict or a known rollback restores editability without blaming unrelated
 handles; on `commitOutcomeUnknown` marks the batch `indeterminate` and blocks further
 saves until resolved.
 
+As built in G3 (target `SQLiteSwiftModelContext`): `SQLiteModel<Record>` is the
+`@Observable` handle; `value` is the working value and setting it is a local edit.
+`save()` returns `saved(count:)` or `conflict(_:)`; concurrent saves are
+serialized (a second save waits), not rejected. A save with an unknown outcome
+makes `save()` throw `misuse` until `resolveIndeterminate()` returns `committed` or
+`notCommitted`. Inserts choose their incarnation before the write, so a commit
+learned by resolution has an exactly known version; resolved handles are then
+refreshed. `refresh(_:)` applies a stored row explicitly (automatic remote updates
+are G5). The key of a handle can't change. Cancellation is checked before the
+write and after the pre-write suspension; inside the transaction the core's
+interrupt rolls back, which is reported as `interrupted`, never as unknown.
+
 ### M6. Commit-outcome markers: as short-lived as possible
 
 Every managed batch inserts one row into the store table
@@ -233,7 +245,7 @@ repository, so it is not compared here.
 | G0 | this document | baseline runs in section 1 | done |
 | G1 | `SQLiteSwiftModels`: record protocol, descriptors, codecs, snapshots, versions | three record types with different keys, nullable and BLOB fields round-trip; negative codec and schema tests | done (see G1 report in its PR) |
 | G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | done (see G2 report in its PR) |
-| G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | design |
+| G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | done (see G3 report in its PR) |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | design |
 | G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | design |
 | G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | design |

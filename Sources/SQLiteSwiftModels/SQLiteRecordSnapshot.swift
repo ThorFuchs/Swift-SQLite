@@ -38,6 +38,12 @@ public struct SQLiteRecordVersion: Sendable, Hashable, CustomStringConvertible {
         self.incarnation = bytes
     }
 
+    /// 16 fresh random bytes for a new row.
+    package static func newIncarnation() -> [UInt8] {
+        var generator = SystemRandomNumberGenerator()
+        return (0..<incarnationByteCount).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+    }
+
     public var description: String {
         let hex = incarnation.prefix(4).map { byte in
             let digits = String(byte, radix: 16)

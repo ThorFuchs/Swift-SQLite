@@ -17,6 +17,12 @@
   `updated`, `deleted`, `conflict(current:)`, `missing`); revision plus incarnation
   checks, so a reused key never matches an old version; and all-or-nothing batches
   with `SQLiteDatabase.writeRecords(_:)`.
+- Model layer, gate G3 (internal target `SQLiteSwiftModelContext`, no product
+  yet): `@MainActor` `SQLiteModelContext` with one observable `SQLiteModel` handle
+  per record (`clean`, `dirty`, `saving`, `conflicted`, `deleted`,
+  `indeterminate`), atomic conditional `save()`, explicit `useRemote`, `keepLocal`
+  and `discard`, save markers with `resolveIndeterminate()`, and
+  `SQLiteModelSchema` (migration and marker pruning).
 
 ## 0.9.0 — unreleased
 

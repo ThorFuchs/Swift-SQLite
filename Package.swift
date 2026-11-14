@@ -57,6 +57,16 @@ let package = Package(
             dependencies: ["SQLiteSwift"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        .target(
+            name: "SQLiteSwiftModelContext",
+            dependencies: ["SQLiteSwiftModels", "SQLiteSwift"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "SQLiteSwiftModelContextTests",
+            dependencies: ["SQLiteSwiftModelContext", "SQLiteSwiftModels", "SQLiteSwift", "SQLiteSwiftTesting"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .testTarget(
             name: "SQLiteSwiftModelsTests",
             dependencies: ["SQLiteSwiftModels", "SQLiteSwift", "SQLiteSwiftTesting"],
