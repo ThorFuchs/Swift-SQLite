@@ -67,7 +67,7 @@ every supported platform.
 
 ## 3. Decisions
 
-### M1. Two targets, unreleased until G5
+### M1. Two targets, products from G6 (shipping with 1.0.0)
 
 | Target | Contents | Depends on |
 | --- | --- | --- |
@@ -76,8 +76,8 @@ every supported platform.
 
 The change stream lives in `SQLiteSwiftModels` because only the store sees every
 managed write. Both targets stay without a product until G5 passes, so the API can
-change without breaking SemVer; they ship as products in a 1.x minor release
-(G6). The core keeps zero dependencies and no `Observation` import.
+change without breaking SemVer; they become products in G6 (originally planned for
+a 1.x minor release; see the decision below). The core keeps zero dependencies and no `Observation` import.
 
 Rejected: three targets (observation split from models adds a boundary without a
 separate dependency); one target with `Observation` (would force it on server-only
@@ -85,9 +85,12 @@ consumers).
 
 As done in G6: both targets are library products with DocC catalogs
 (`Scripts/build-docs.sh` builds all three modules; `.spi.yml` lists them), README
-and CHANGELOG entries. Shipping them is a release decision: merged before the
-1.0.0 tag, they join the 1.0 API freeze; merged after it, they arrive in 1.1.0 as
-M1 planned. Developer-kit recipes wait for the kit itself.
+and CHANGELOG entries. Developer-kit recipes wait for the kit itself.
+
+**Decision (15 November 2026): the model products ship with 1.0.0**, not in a 1.x
+minor as first planned. They are part of the 0.9.0 release candidate and its API
+freeze, so they get the same validation phase as the core, and 1.0.0 promises no
+source-breaking change to them before 2.0.0.
 
 ### M2. Manual record descriptors first
 
@@ -284,7 +287,7 @@ repository, so it is not compared here.
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | done (see G3 report in its PR) |
 | G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | done (see G4 report in its PR) |
 | G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | done (see G5 report in its PR) |
-| G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | done in its PR; the release itself is a separate decision |
+| G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | done; ships with 0.9.0 → 1.0.0 |
 | G7 | optional: macro companion package; Hummingbird/SSE demo | outside this package | design |
 
 Each gate is one pull request. Each report lists the ref and files, the commands run
