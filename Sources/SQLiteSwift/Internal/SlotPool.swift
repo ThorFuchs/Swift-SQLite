@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import Synchronization
-
 /// A fixed set of slots (connection indexes) handed out one caller at a time.
 ///
 /// Callers wait in FIFO order. A waiting caller whose task is cancelled leaves the
@@ -13,7 +11,7 @@ final class SQLiteSlotPool: Sendable {
         let continuation: CheckedContinuation<Result<Int, SQLiteError>, Never>
     }
 
-    private struct State: ~Copyable {
+    private struct State: Sendable {
         var free: [Int]
         var waiters: [Waiter] = []
         var nextID: UInt64 = 0
@@ -22,10 +20,10 @@ final class SQLiteSlotPool: Sendable {
         let capacity: Int
     }
 
-    private let state: Mutex<State>
+    private let state: SQLiteLocked<State>
 
     init(capacity: Int) {
-        state = Mutex(State(free: Array((0..<capacity).reversed()), capacity: capacity))
+        state = SQLiteLocked(State(free: Array((0..<capacity).reversed()), capacity: capacity))
     }
 
     /// The number of slots currently handed out (for tests and diagnostics).

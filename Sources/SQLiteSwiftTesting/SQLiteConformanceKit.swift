@@ -166,7 +166,7 @@ private func require(_ condition: Bool, _ message: @autoclosure () -> String) th
 }
 
 private final class Notes: Sendable {
-    private let storage = Mutex<[String]>([])
+    private let storage = SQLiteLocked<[String]>([])
     func add(_ note: String) { storage.withLock { $0.append(note) } }
     var all: [String] { storage.withLock { $0 } }
 }

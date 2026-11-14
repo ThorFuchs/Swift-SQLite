@@ -13,10 +13,10 @@ import Musl
 
 /// A clock that only moves when told to. Inject it as ``SQLiteConfiguration/clock``.
 public final class SQLiteManualClock: SQLiteClock {
-    private let current: Mutex<SQLiteTimestamp>
+    private let current: SQLiteLocked<SQLiteTimestamp>
 
     public init(_ start: SQLiteTimestamp = SQLiteTimestamp(millisecondsSince1970: 1_700_000_000_000)) {
-        current = Mutex(start)
+        current = SQLiteLocked(start)
     }
 
     public func now() -> SQLiteTimestamp {
