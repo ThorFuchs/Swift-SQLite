@@ -43,7 +43,7 @@ public enum SQLiteSaveResolution: Sendable, Hashable {
 /// their edits together:
 ///
 /// ```swift
-/// let context = SQLiteModelContext(database: database)
+/// let context = SQLiteModelContext(store: store)
 /// if let article = try await context.find(Article.self, id: "a1") {
 ///     article.value.title = "New title"
 ///     try await context.save()
@@ -52,16 +52,20 @@ public enum SQLiteSaveResolution: Sendable, Hashable {
 ///
 /// A context belongs to one place in an app, such as a window; there is no global
 /// one. Server code should use transactions and ``SQLiteSwift/SQLiteDatabase/writeRecords(_:limits:)``
-/// directly. The database needs the context's tables: include
-/// ``SQLiteModelSchema/migration(version:name:)`` in its migrations.
+/// directly. Saves go through the store, so its change stream reports them with the
+/// context's ``origin``.
 ///
 /// Saves are conditional and atomic. A save never overwrites a row that changed
 /// since its handle read it; it reports a conflict and keeps every edit. Saves run
 /// one after another: a second `save()` waits for the first.
 @MainActor
 public final class SQLiteModelContext {
-    /// The database the context reads and saves through.
-    public let database: SQLiteDatabase
+    /// The store the context saves through.
+    public let store: SQLiteModelStore
+    /// The database the context reads from.
+    public var database: SQLiteDatabase { store.database }
+    /// The origin of this context's saves in the store's change stream.
+    public let origin = SQLiteChangeOrigin()
 
     private struct Key: Hashable {
         let type: ObjectIdentifier
@@ -90,8 +94,8 @@ public final class SQLiteModelContext {
     /// Reports the next committed save as `commitOutcomeUnknown`.
     var reportNextCommitAsUnknownForTesting = false
 
-    public init(database: SQLiteDatabase) {
-        self.database = database
+    public init(store: SQLiteModelStore) {
+        self.store = store
     }
 
     /// Whether a save's commit outcome is unknown. While it is, ``save()`` throws;
@@ -231,7 +235,7 @@ public final class SQLiteModelContext {
         let table = SQLiteModelSchema.operationsTable
         let outcome: SQLiteRecordBatchOutcome
         do throws(SQLiteError) {
-            outcome = try await database.writeOrRollback { (tx) throws(SQLiteError) in
+            outcome = try await store.managedWrite(origin: origin) { (tx) throws(SQLiteError) in
                 for old in markersToDelete {
                     try tx.executeRaw("DELETE FROM \(table) WHERE id = ?", [.blob(old)])
                 }
@@ -239,11 +243,11 @@ public final class SQLiteModelContext {
                 var reports: [SQLiteRecordWriteReport] = []
                 for (index, write) in writes.enumerated() {
                     let report = try write.run(at: index, in: tx)
-                    guard report.isApplied else { return .rollback(.rolledBack(failure: report)) }
+                    guard report.isApplied else { return .rollback((.rolledBack(failure: report), [])) }
                     reports.append(report)
                 }
                 try inTransaction?(tx)
-                return .commit(.committed(reports))
+                return .commit((.committed(reports), reports))
             }
             if reportNextCommitAsUnknownForTesting, case .committed = outcome {
                 reportNextCommitAsUnknownForTesting = false

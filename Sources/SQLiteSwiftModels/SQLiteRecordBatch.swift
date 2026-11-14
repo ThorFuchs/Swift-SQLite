@@ -18,12 +18,12 @@ public struct SQLiteRecordWrite: Sendable {
     }
 
     init<Record: SQLiteRecord>(
-        _ type: Record.Type,
+        _ type: Record.Type, id: Record.ID,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteRecordWriteOutcome<Record>
     ) {
         table = Record.descriptor.table.name
         apply = { (transaction) throws(SQLiteError) in
-            SQLiteRecordWriteReport.Body(try body(transaction))
+            SQLiteRecordWriteReport.Body(try body(transaction), key: try Record.descriptor.encodeKey(id))
         }
     }
 
@@ -43,7 +43,7 @@ public struct SQLiteRecordWrite: Sendable {
     public static func save<Record: SQLiteRecord>(
         _ record: Record, expecting expectation: SQLiteWriteExpectation
     ) -> SQLiteRecordWrite {
-        SQLiteRecordWrite(Record.self) { (transaction) throws(SQLiteError) in
+        SQLiteRecordWrite(Record.self, id: record.id) { (transaction) throws(SQLiteError) in
             try transaction.save(record, expecting: expectation)
         }
     }
@@ -52,7 +52,7 @@ public struct SQLiteRecordWrite: Sendable {
     package static func save<Record: SQLiteRecord>(
         _ record: Record, expecting expectation: SQLiteWriteExpectation, incarnation: [UInt8]
     ) -> SQLiteRecordWrite {
-        SQLiteRecordWrite(Record.self) { (transaction) throws(SQLiteError) in
+        SQLiteRecordWrite(Record.self, id: record.id) { (transaction) throws(SQLiteError) in
             try transaction.save(record, expecting: expectation, incarnation: incarnation)
         }
     }
@@ -61,7 +61,7 @@ public struct SQLiteRecordWrite: Sendable {
     public static func delete<Record: SQLiteRecord>(
         _ type: Record.Type, id: Record.ID, expecting expected: SQLiteRecordVersion
     ) -> SQLiteRecordWrite {
-        SQLiteRecordWrite(Record.self) { (transaction) throws(SQLiteError) in
+        SQLiteRecordWrite(Record.self, id: id) { (transaction) throws(SQLiteError) in
             try transaction.delete(Record.self, id: id, expecting: expected)
         }
     }
@@ -74,6 +74,9 @@ public struct SQLiteRecordWriteReport: Sendable {
     /// The table it went to.
     public let table: String
     let body: Body
+
+    /// The stored form of the record's key.
+    public var key: SQLiteRawValue { body.key }
 
     /// The outcome without its record type.
     ///
@@ -105,9 +108,11 @@ public struct SQLiteRecordWriteReport: Sendable {
     struct Body: Sendable {
         let summary: Summary
         let outcome: any Sendable
+        let key: SQLiteRawValue
 
-        init<Record: SQLiteRecord>(_ outcome: SQLiteRecordWriteOutcome<Record>) {
+        init<Record: SQLiteRecord>(_ outcome: SQLiteRecordWriteOutcome<Record>, key: SQLiteRawValue) {
             self.outcome = outcome
+            self.key = key
             summary = switch outcome {
             case .inserted(let s): .inserted(s.version)
             case .updated(let s): .updated(s.version)

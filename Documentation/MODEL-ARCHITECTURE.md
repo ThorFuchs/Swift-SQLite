@@ -203,6 +203,21 @@ Rejected for v1: `sqlite3_update_hook` (misses `WITHOUT ROWID` tables and
 detection (`PRAGMA data_version` polling may come later as a separate, explicitly
 weaker opt-in).
 
+As built in G4: `SQLiteModelStore` (in `SQLiteSwiftModels`, so server code can use
+it without the main-actor context) owns the stream. `store.writeRecords(_:origin:)`
+and every context save run through one store-level turn, so a batch is published
+before the next managed write starts and publication order is commit order without
+a reorder buffer. `subscribe(bufferSize:_:)` returns the snapshot and an
+`SQLiteChangeSubscription` (`AsyncSequence` of `committed` / `resyncRequired`).
+Events carry the sequence, the writer's `SQLiteChangeOrigin`, and per record the
+table, stored key (`id(as:)` decodes it), kind and version. Deviation: a commit
+with an unknown outcome is not published later after resolution; it sends
+`resyncRequired` to every subscriber at once, which is stricter and never shows
+an unconfirmed change. A subscription ends after `resyncRequired`; the consumer
+subscribes again for a new snapshot. `SQLiteModelSchema` moved to
+`SQLiteSwiftModels` and now also creates `sqliteswift_model_sequence`. A
+`SQLiteModelContext` is created from a store (`init(store:)`).
+
 ### M8. Store-owned schema
 
 The store's tables (`sqliteswift_model_operations`, `sqliteswift_model_sequence`)
@@ -246,7 +261,7 @@ repository, so it is not compared here.
 | G1 | `SQLiteSwiftModels`: record protocol, descriptors, codecs, snapshots, versions | three record types with different keys, nullable and BLOB fields round-trip; negative codec and schema tests | done (see G1 report in its PR) |
 | G2 | conditional insert/update/delete, batches, outcomes (M3, M4) | two writers; delete vs update; insert vs insert; key reuse gets a new incarnation; `Int64.max`; whole-batch rollback | done (see G2 report in its PR) |
 | G3 | `SQLiteSwiftModelContext` (M5, M6) | every state transition with barriers, no sleeps; cancellation in each phase; a real unknown commit; no lost edit | done (see G3 report in its PR) |
-| G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | design |
+| G4 | committed-change stream (M7) | no event on rollback or unresolved unknown; watermark handoff under concurrent subscribe; overflow → `resyncRequired`; cleanup on cancel and close | done (see G4 report in its PR) |
 | G5 | `observe(record:)`, table-scoped live queries | two contexts: clean handles update, dirty ones keep their draft, remote deletion is shown | design |
 | G6 | products, DocC, changelog, developer-kit recipes, 1.x release | macOS, iOS cross-compile, Linux, ThreadSanitizer and AddressSanitizer, API check | design |
 | G7 | optional: macro companion package; Hummingbird/SSE demo | outside this package | design |

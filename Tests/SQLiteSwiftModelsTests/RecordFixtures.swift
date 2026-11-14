@@ -96,7 +96,8 @@ let recordMigrations = [
         CREATE TABLE readings (id INTEGER PRIMARY KEY, value, taken_at, count, note, rev, inc);
         CREATE TABLE attachments (id PRIMARY KEY, name, bytes, price, owner, created, revision, incarnation);
         CREATE TABLE incomplete (id, title, featured, summary, status, incarnation);
-        """)
+        """),
+    SQLiteModelSchema.migration(version: 2),
 ]
 
 /// Inserts a record with raw SQL built from its descriptor (revision 1, a fresh
@@ -166,4 +167,20 @@ func changed<T>(_ value: T, _ edit: (inout T) -> Void) -> T {
     var copy = value
     edit(&copy)
     return copy
+}
+
+/// A Sendable signal from a worker thread to an async test.
+final class Signal: Sendable {
+    let stream: AsyncStream<Void>
+    private let continuation: AsyncStream<Void>.Continuation
+
+    init() {
+        (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+    }
+
+    func fire() { continuation.yield() }
+
+    func next() async {
+        for await _ in stream { return }
+    }
 }
