@@ -12,6 +12,11 @@ public struct SQLiteRecordWrite: Sendable {
     public let table: String
     let apply: @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteRecordWriteReport.Body
 
+    /// Runs this write as the `index`th of a batch in `transaction`.
+    package func run(at index: Int, in transaction: SQLiteTransaction) throws(SQLiteError) -> SQLiteRecordWriteReport {
+        SQLiteRecordWriteReport(index: index, table: table, body: try apply(transaction))
+    }
+
     init<Record: SQLiteRecord>(
         _ type: Record.Type,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteRecordWriteOutcome<Record>
@@ -40,6 +45,15 @@ public struct SQLiteRecordWrite: Sendable {
     ) -> SQLiteRecordWrite {
         SQLiteRecordWrite(Record.self) { (transaction) throws(SQLiteError) in
             try transaction.save(record, expecting: expectation)
+        }
+    }
+
+    /// `save` with a chosen incarnation for an insert.
+    package static func save<Record: SQLiteRecord>(
+        _ record: Record, expecting expectation: SQLiteWriteExpectation, incarnation: [UInt8]
+    ) -> SQLiteRecordWrite {
+        SQLiteRecordWrite(Record.self) { (transaction) throws(SQLiteError) in
+            try transaction.save(record, expecting: expectation, incarnation: incarnation)
         }
     }
 
@@ -139,7 +153,7 @@ extension SQLiteDatabase {
             var reports: [SQLiteRecordWriteReport] = []
             reports.reserveCapacity(writes.count)
             for (index, write) in writes.enumerated() {
-                let report = SQLiteRecordWriteReport(index: index, table: write.table, body: try write.apply(transaction))
+                let report = try write.run(at: index, in: transaction)
                 guard report.isApplied else {
                     return .rollback(.rolledBack(failure: report))
                 }

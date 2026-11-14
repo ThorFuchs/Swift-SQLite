@@ -36,6 +36,14 @@ extension SQLiteTransaction {
     public func save<Record: SQLiteRecord>(
         _ record: Record, expecting expectation: SQLiteWriteExpectation
     ) throws(SQLiteError) -> SQLiteRecordWriteOutcome<Record> {
+        try save(record, expecting: expectation, incarnation: SQLiteRecordVersion.newIncarnation())
+    }
+
+    /// `save` with the incarnation an insert gets. The context chooses it before the
+    /// write, so it knows the exact version even when the commit outcome is unknown.
+    package func save<Record: SQLiteRecord>(
+        _ record: Record, expecting expectation: SQLiteWriteExpectation, incarnation: [UInt8]
+    ) throws(SQLiteError) -> SQLiteRecordWriteOutcome<Record> {
         let d = Record.descriptor
         try d.validate()
         let values = try d.encode(record)
@@ -53,10 +61,13 @@ extension SQLiteTransaction {
             // checked even when the table has no unique constraint on it.
             let sql = """
                 INSERT INTO \(table) (\(names.joined(separator: ", "))) \
-                SELECT \(placeholders), 1, randomblob(16) \
+                SELECT \(placeholders), 1, ? \
                 WHERE NOT EXISTS (SELECT 1 FROM \(table) WHERE \(keyQ) = ?)
                 """
-            let changes = try executeRaw(sql, values + [key])
+            guard incarnation.count == SQLiteRecordVersion.incarnationByteCount else {
+                throw .invalidArgument("an incarnation has 16 bytes, got \(incarnation.count)")
+            }
+            let changes = try executeRaw(sql, values + [.blob(incarnation), key])
             let stored = try storedSnapshot(Record.self, id: record.id)
             if changes.changedRows == 1 {
                 return .inserted(stored)
