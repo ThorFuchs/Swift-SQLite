@@ -17,7 +17,7 @@ struct ContextTests {
     @Test("One handle per record, also for concurrent finds; a missing key is nil")
     func oneHandlePerRecord() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             async let first = context.find(Note.self, id: "a")
             async let second = context.find(Note.self, id: "a")
             let (x, y) = try await (first, second)
@@ -27,7 +27,7 @@ struct ContextTests {
             #expect(try await context.find(Note.self, id: "zzz") == nil)
             #expect(a.state == .clean && a.baseline?.version.revision == 1)
 
-            let other = SQLiteModelContext(database: database)
+            let other = SQLiteModelContext(store: SQLiteModelStore(database: database))
             #expect(try await other.find(Note.self, id: "a") !== a)  // context-local, never global
         }
     }
@@ -37,7 +37,7 @@ struct ContextTests {
     @Test("Edit, save, and the baseline takes the version the database returned")
     func editAndSave() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let c = try #require(try await context.find(Counter.self, id: 1))
             a.value.title = "A2"
@@ -55,10 +55,10 @@ struct ContextTests {
     @Test("A remote row applied to a clean handle is not a local edit")
     func remoteIsNotAnEdit() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let generation = a.editGeneration
-            let other = SQLiteModelContext(database: database)
+            let other = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let remote = try #require(try await other.find(Note.self, id: "a"))
             remote.value.title = "remote"
             try await other.save()
@@ -79,7 +79,7 @@ struct ContextTests {
     @Test("Edits made while a save is suspended are kept and stay dirty")
     func editDuringSave() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let reached = Gate(), release = Gate()
             context.beforeWriteForTesting = { reached.open(); await release.wait() }
@@ -105,7 +105,7 @@ struct ContextTests {
     @Test("A second save waits for the first instead of overlapping it")
     func savesAreSerialized() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let b = try #require(try await context.find(Note.self, id: "b"))
             let reached = Gate(), release = Gate()
@@ -130,7 +130,7 @@ struct ContextTests {
     @Test("A stale save conflicts, rolls back, and doesn't blame the other handles")
     func conflictDoesNotBlameOthers() async throws {
         try await withContextDatabase { database in
-            let mine = SQLiteModelContext(database: database), theirs = SQLiteModelContext(database: database)
+            let mine = SQLiteModelContext(store: SQLiteModelStore(database: database)), theirs = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await mine.find(Note.self, id: "a"))
             let b = try #require(try await mine.find(Note.self, id: "b"))
             let c = try #require(try await mine.find(Counter.self, id: 1))
@@ -162,7 +162,7 @@ struct ContextTests {
     @Test("useRemote and discard drop local edits; resolution needs a conflict")
     func useRemoteAndDiscard() async throws {
         try await withContextDatabase { database in
-            let mine = SQLiteModelContext(database: database), theirs = SQLiteModelContext(database: database)
+            let mine = SQLiteModelContext(store: SQLiteModelStore(database: database)), theirs = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await mine.find(Note.self, id: "a"))
             #expect(await caught { try a.useRemote() }?.code == .misuse)
             #expect(await caught { try a.keepLocal() }?.code == .misuse)
@@ -185,7 +185,7 @@ struct ContextTests {
     @Test("A remote deletion is a conflict and never becomes an insert")
     func remoteDeletionDoesNotResurrect() async throws {
         try await withContextDatabase { database in
-            let mine = SQLiteModelContext(database: database), theirs = SQLiteModelContext(database: database)
+            let mine = SQLiteModelContext(store: SQLiteModelStore(database: database)), theirs = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await mine.find(Note.self, id: "a"))
             let b = try #require(try await mine.find(Note.self, id: "b"))
             let ra = try #require(try await theirs.find(Note.self, id: "a"))
@@ -216,7 +216,7 @@ struct ContextTests {
     @Test("Insert and delete through the context; a taken key conflicts")
     func insertAndDelete() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let n = try context.insert(Note(id: "n", title: "new", body: nil))
             #expect(n.state == .dirty && n.baseline == nil)
             #expect(await caught { try context.insert(Note(id: "n", title: "again", body: nil)) }?.code == .misuse)
@@ -247,7 +247,7 @@ struct ContextTests {
     @Test("A changed key is refused and the save writes nothing")
     func keyCannotChange() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let b = try #require(try await context.find(Note.self, id: "b"))
             b.value.title = "fine"
@@ -263,7 +263,7 @@ struct ContextTests {
     @Test("Cancelled before the save starts: nothing is written, edits stay")
     func cancelBeforeSave() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             a.value.title = "never"
             let task = Task {
@@ -280,7 +280,7 @@ struct ContextTests {
     @Test("Cancelled while suspended before the write: nothing is written, edits stay")
     func cancelDuringPreWriteSuspension() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let reached = Gate(), release = Gate()
             context.beforeWriteForTesting = { reached.open(); await release.wait() }
@@ -300,7 +300,7 @@ struct ContextTests {
     @Test("Cancelled inside the transaction: rolled back, not unknown, edits stay")
     func cancelInsideTransaction() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let reached = Signal()
             let release = DispatchSemaphore(value: 0)
@@ -326,7 +326,7 @@ struct ContextTests {
     @Test("A real unknown commit: indeterminate, saves blocked, resolved as not committed")
     func realUnknownCommit() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             context.inTransactionForTesting = { (tx) throws(SQLiteError) in
                 tx.core.failNextCommitForTesting = true  // COMMIT fails after the transaction ended
@@ -352,7 +352,7 @@ struct ContextTests {
     @Test("An unknown outcome that did commit: resolved exactly, later remote change conflicts")
     func unknownThatCommitted() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             let n = try context.insert(Note(id: "n", title: "new", body: nil))
             context.reportNextCommitAsUnknownForTesting = true
@@ -361,7 +361,7 @@ struct ContextTests {
             #expect(a.state == .indeterminate && n.state == .indeterminate)
             a.value.title = "later local"
 
-            let other = SQLiteModelContext(database: database)
+            let other = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let remote = try #require(try await other.find(Note.self, id: "a"))
             remote.value.title = "remote"
             try await other.save()
@@ -382,7 +382,7 @@ struct ContextTests {
         let database = try await SQLiteDatabase.open(
             SQLiteConfiguration(path: directory.file("closed.sqlite")), migrations: contextMigrations)
         try await database.writeRecords([.insert(Note(id: "a", title: "A", body: nil))])
-        let context = SQLiteModelContext(database: database)
+        let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
         let a = try #require(try await context.find(Note.self, id: "a"))
         context.reportNextCommitAsUnknownForTesting = true
         a.value.title = "local"
@@ -392,12 +392,56 @@ struct ContextTests {
         #expect(a.state == .indeterminate && a.value.title == "local" && context.hasIndeterminateSave)
     }
 
+    // MARK: Change stream
+
+    @Test("Saves are published with the context's origin; conflicts publish nothing")
+    func savesArePublished() async throws {
+        try await withContextDatabase { database in
+            let store = SQLiteModelStore(database: database)
+            let mine = SQLiteModelContext(store: store), theirs = SQLiteModelContext(store: store)
+            let (_, changes) = try await store.subscribe { (_) throws(SQLiteError) in 0 }
+            var events = changes.makeAsyncIterator()
+            let a = try #require(try await mine.find(Note.self, id: "a"))
+            let stale = try #require(try await theirs.find(Note.self, id: "a"))
+            a.value.title = "mine"
+            try await mine.save()
+            stale.value.title = "stale"
+            guard case .conflict = try await theirs.save() else { Issue.record("expected a conflict"); return }
+            let n = try theirs.insert(Note(id: "n", title: "new", body: nil))
+            try await theirs.save()
+
+            guard case .committed(let first) = await events.next() else { Issue.record("no event"); return }
+            #expect(first.sequence == 1 && first.origin == mine.origin)
+            #expect(first.changes.map(\.kind) == [.updated] && first.changes[0].id(as: Note.self) == "a")
+            #expect(first.changes[0].version == a.baseline?.version)
+            guard case .committed(let second) = await events.next() else { Issue.record("no event"); return }
+            #expect(second.sequence == 2 && second.origin == theirs.origin)  // the conflict published nothing
+            #expect(second.changes[0].kind == .inserted && second.changes[0].version == n.baseline?.version)
+        }
+    }
+
+    @Test("A real unknown save sends resyncRequired")
+    func unknownSaveRequiresResync() async throws {
+        try await withContextDatabase { database in
+            let store = SQLiteModelStore(database: database)
+            let context = SQLiteModelContext(store: store)
+            let (_, changes) = try await store.subscribe { (_) throws(SQLiteError) in 0 }
+            let a = try #require(try await context.find(Note.self, id: "a"))
+            context.inTransactionForTesting = { (tx) throws(SQLiteError) in tx.core.failNextCommitForTesting = true }
+            a.value.title = "maybe"
+            #expect(await caught { try await context.save() }?.code == .commitOutcomeUnknown)
+            var events = changes.makeAsyncIterator()
+            #expect(await events.next() == .resyncRequired)
+            #expect(await events.next() == nil)
+        }
+    }
+
     // MARK: Markers
 
     @Test("Each save leaves one marker and deletes the previous one; old markers are pruned")
     func markers() async throws {
         try await withContextDatabase { database in
-            let context = SQLiteModelContext(database: database)
+            let context = SQLiteModelContext(store: SQLiteModelStore(database: database))
             let a = try #require(try await context.find(Note.self, id: "a"))
             for title in ["1", "2", "3"] {
                 a.value.title = title

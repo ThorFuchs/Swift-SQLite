@@ -23,6 +23,12 @@
   `indeterminate`), atomic conditional `save()`, explicit `useRemote`, `keepLocal`
   and `discard`, save markers with `resolveIndeterminate()`, and
   `SQLiteModelSchema` (migration and marker pruning).
+- Model layer, gate G4: `SQLiteModelStore` with managed `writeRecords(_:origin:)`
+  and a committed-change stream: `subscribe(bufferSize:_:)` returns a snapshot and
+  an `SQLiteChangeSubscription` with a watermark handoff, bounded buffers that end
+  in `resyncRequired`, and cleanup on cancel and close. `SQLiteModelSchema` moved to
+  `SQLiteSwiftModels` and adds the sequence table; `SQLiteModelContext` is created
+  from a store.
 
 ## 0.9.0 — unreleased
 

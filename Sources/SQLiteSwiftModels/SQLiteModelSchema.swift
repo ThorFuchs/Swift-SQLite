@@ -3,7 +3,7 @@
 import Foundation
 import SQLiteSwift
 
-/// The tables the editing context owns.
+/// The tables the model store and the editing context own.
 ///
 /// Add ``migration(version:)`` to your own numbered migration list, so your
 /// `user_version` stays the single schema version of the file:
@@ -19,13 +19,21 @@ public enum SQLiteModelSchema {
     /// commit whose outcome is unknown.
     public static let operationsTable = "sqliteswift_model_operations"
 
-    /// The migration that creates the context's tables.
-    public static func migration(version: Int, name: String = "sqliteswift model context") -> SQLiteMigration {
+    /// The one-row table whose value counts the store's committed batches.
+    public static let sequenceTable = "sqliteswift_model_sequence"
+
+    /// The migration that creates the store's tables.
+    public static func migration(version: Int, name: String = "sqliteswift model store") -> SQLiteMigration {
         SQLiteMigration(version: version, name: name, sql: """
             CREATE TABLE \(operationsTable) (
                 id BLOB PRIMARY KEY CHECK (length(id) = 16),
                 created_at INTEGER NOT NULL
             ) WITHOUT ROWID;
+            CREATE TABLE \(sequenceTable) (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                value INTEGER NOT NULL CHECK (value >= 0)
+            );
+            INSERT INTO \(sequenceTable) (id, value) VALUES (1, 0);
             """)
     }
 
@@ -47,7 +55,7 @@ public enum SQLiteModelSchema {
         }
     }
 
-    static func nowMilliseconds() -> Int64 {
+    package static func nowMilliseconds() -> Int64 {
         Int64((Date().timeIntervalSince1970 * 1000).rounded(.down))
     }
 }
