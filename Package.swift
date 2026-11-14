@@ -50,6 +50,18 @@ let package = Package(
             dependencies: ["SQLiteSwift"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        // Opt-in model layer (see Documentation/MODEL-ARCHITECTURE.md). No product yet:
+        // it ships as a product once its gates pass, so its API can still change.
+        .target(
+            name: "SQLiteSwiftModels",
+            dependencies: ["SQLiteSwift"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "SQLiteSwiftModelsTests",
+            dependencies: ["SQLiteSwiftModels", "SQLiteSwift", "SQLiteSwiftTesting"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .testTarget(
             name: "SQLiteSwiftTests",
             dependencies: ["SQLiteSwift", "SQLiteSwiftTesting"],
