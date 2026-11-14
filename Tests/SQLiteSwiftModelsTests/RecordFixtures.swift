@@ -135,3 +135,35 @@ func caught<T>(_ operation: () async throws -> T) async -> SQLiteError? {
         return nil
     }
 }
+
+/// Two independent databases (separate connection pools) on the same file, to race
+/// writers the way two processes or two stores would.
+func withTwoRecordDatabases<T>(_ body: (SQLiteDatabase, SQLiteDatabase) async throws -> T) async throws -> T {
+    let directory = try SQLiteTemporaryDirectory()
+    let configuration = SQLiteConfiguration(path: directory.file("records.sqlite"))
+    let first = try await SQLiteDatabase.open(configuration, migrations: recordMigrations)
+    let second: SQLiteDatabase
+    do {
+        second = try await SQLiteDatabase.open(configuration, migrations: recordMigrations)
+    } catch {
+        await first.close()
+        throw error
+    }
+    do {
+        let result = try await body(first, second)
+        await first.close()
+        await second.close()
+        return result
+    } catch {
+        await first.close()
+        await second.close()
+        throw error
+    }
+}
+
+/// A copy of `value` with `edit` applied, as a `let` that Sendable closures can capture.
+func changed<T>(_ value: T, _ edit: (inout T) -> Void) -> T {
+    var copy = value
+    edit(&copy)
+    return copy
+}
