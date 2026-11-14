@@ -68,4 +68,8 @@ jobs:
           export TSAN_OPTIONS="suppressions=$PWD/.github/tsan-linux.supp"
           setarch "$(uname -m)" -R swift test --sanitize=thread --scratch-path .build/tsan
       - name: Test with Address Sanitizer
-        run: swift test --sanitize=address --scratch-path .build/asan
+        # Leaks from the toolchain's XCTest runner are suppressed in
+        # .github/lsan-linux.supp; leaks in this package are still reported.
+        run: |
+          export LSAN_OPTIONS="suppressions=$PWD/.github/lsan-linux.supp"
+          swift test --sanitize=address --scratch-path .build/asan
