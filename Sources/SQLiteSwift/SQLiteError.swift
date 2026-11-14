@@ -159,6 +159,13 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         /// An existing file does not have the configured ``SQLiteFileIdentity``. Nothing
         /// was written. See ``SQLiteError/setting``.
         public static let fileIdentityMismatch = Code("fileIdentityMismatch")
+        /// A table does not have the columns a record mapping needs. See
+        /// ``SQLiteError/setting`` (the name is `table.column`).
+        public static let schemaMismatch = Code("schemaMismatch")
+        /// A stored value could not be decoded into the requested Swift type (for example
+        /// NULL in a non-optional column, invalid UTF-8 text, or an integer out of range).
+        /// See ``SQLiteError/column`` and ``SQLiteError/reason``.
+        public static let invalidStoredValue = Code("invalidStoredValue")
 
         // Limits and values.
 
@@ -221,6 +228,7 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         case typeMismatch(TypeMismatch)
         case setting(SettingMismatch)
         case migration(version: Int, name: String)
+        case column(name: String, reason: String)
     }
 
     /// What went wrong.
@@ -248,10 +256,19 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     /// ``Code/migrationFailed``.
     public var underlying: SQLiteError? { wrapped.first }
 
-    /// The explanation for ``Code/invalidConfiguration``, ``Code/invalidArgument`` and
-    /// ``Code/misuse``.
+    /// The explanation for ``Code/invalidConfiguration``, ``Code/invalidArgument``,
+    /// ``Code/misuse`` and ``Code/invalidStoredValue``.
     public var reason: String? {
-        if case .reason(let r) = payload { return r }
+        switch payload {
+        case .reason(let r), .column(_, let r): return r
+        default: return nil
+        }
+    }
+
+    /// The column whose stored value could not be decoded, for
+    /// ``Code/invalidStoredValue``.
+    public var column: String? {
+        if case .column(let name, _) = payload { return name }
         return nil
     }
 
@@ -292,7 +309,8 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         return nil
     }
 
-    /// The detail of a ``Code/settingMismatch`` or ``Code/fileIdentityMismatch`` error.
+    /// The detail of a ``Code/settingMismatch``, ``Code/fileIdentityMismatch`` or
+    /// ``Code/schemaMismatch`` error.
     public var setting: SettingMismatch? {
         if case .setting(let s) = payload { return s }
         return nil
@@ -345,8 +363,10 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         case .typeMismatch(let t):
             return "column \(t.column) is \(t.actual.rawValue), expected \(t.expected.rawValue)"
         case .setting(let s):
-            let what = code == .fileIdentityMismatch ? "file identity" : "setting"
+            let what = code == .fileIdentityMismatch ? "file identity" : code == .schemaMismatch ? "schema" : "setting"
             return "\(what) \(s.name) is \(s.actual), expected \(s.expected)"
+        case .column(let name, let reason):
+            return "invalid stored value in column \(name): \(reason)"
         case .migration(let version, let name):
             return "migration \(version) (\(name)) failed: \(underlying.map(String.init(describing:)) ?? "unknown")"
         case .none:
@@ -410,6 +430,12 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     }
     public static func fileIdentityMismatch(setting: String, expected: String, actual: String) -> SQLiteError {
         SQLiteError(.fileIdentityMismatch, .setting(SettingMismatch(name: setting, expected: expected, actual: actual)))
+    }
+    public static func schemaMismatch(setting: String, expected: String, actual: String) -> SQLiteError {
+        SQLiteError(.schemaMismatch, .setting(SettingMismatch(name: setting, expected: expected, actual: actual)))
+    }
+    public static func invalidStoredValue(column: String, reason: String) -> SQLiteError {
+        SQLiteError(.invalidStoredValue, .column(name: column, reason: reason))
     }
     public static func resultTooLarge(limit: Int) -> SQLiteError {
         SQLiteError(.resultTooLarge, .limit(limit))
