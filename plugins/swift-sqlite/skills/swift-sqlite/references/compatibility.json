@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kit_version": "0.1.0",
+  "library": {
+    "repository": "https://github.com/ThorFuchs/Swift-SQLite",
+    "tag": "0.9.0",
+    "commit": "b8f27c3cc8014b949bc94e5ef39906f9b6f5a071",
+    "tree": "e69e3e8135a530782974547e5a993d43763d4fc7",
+    "products": ["SQLiteSwift", "SQLiteSwiftModels", "SQLiteSwiftModelContext", "SQLiteSwiftTesting"]
+  },
+  "toolchain": {"swift": "6.4", "language_mode": "6", "platforms": ["macOS 15", "iOS 18", "Linux x86_64", "Linux arm64"]},
+  "recipes": [
+    "open-migrate", "bound-values", "compare-and-set", "keyset-paging", "operation-limits",
+    "commit-outcome", "raw-bytes", "file-identity", "error-codes", "conformance-kit",
+    "records", "store-stream", "editing-context"
+  ],
+  "qualification": "Every recipe compiles and runs in Debug and Release against the tag (Scripts/run_kit_recipes.sh --tag) and against every pull request's checkout in CI. Another release is not qualified by this map."
+}

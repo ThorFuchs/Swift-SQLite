@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Developer kit 0.1.0 for coding agents, pinned to library 0.9.0: an
+  instruction-only `swift-sqlite` skill (Claude Code plugin marketplace and the
+  portable Agent Plugins format) with references and 13 recipes compiled and run
+  from one consumer package. `Scripts/validate_developer_kit.py`,
+  `Scripts/run_kit_recipes.sh` and `Scripts/package_developer_kit.py`; CI validates
+  the kit and runs every recipe against each pull request. The library is unchanged.
+- `AGENTS.md` for contributors.
+
 ## 0.9.0 — 2026-11-15
 
 Release candidate for 1.0.0: the API is frozen, and the repository is ready for

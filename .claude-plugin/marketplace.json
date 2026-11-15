@@ -1,0 +1,18 @@
+{
+  "name": "swift-sqlite",
+  "owner": {
+    "name": "Thorsten Fuchs"
+  },
+  "metadata": {
+    "description": "The Swift-SQLite agent developer kit: one instruction-only skill for consumers of ThorFuchs/Swift-SQLite."
+  },
+  "plugins": [
+    {
+      "name": "swift-sqlite",
+      "source": "./plugins/swift-sqlite",
+      "description": "Version-aware consumer assistance for ThorFuchs/Swift-SQLite, validated against library 0.9.0.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}
