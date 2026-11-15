@@ -30,7 +30,9 @@ Coding agents working on this repository: read [AGENTS.md](AGENTS.md).
 
 ## Guidelines
 
-- **Zero dependencies.** The package depends on nothing but the toolchain. The model
+- **Zero dependencies by default.** The core depends on nothing but the toolchain.
+  External packages appear only in `SQLiteSwiftServer`, each behind an opt-in package
+  trait; with no trait enabled, SwiftPM resolves nothing. The model
   layer uses only the core's public API, and the core never imports it.
 - **Swift 6 language mode**, strict concurrency, typed throws (`throws(SQLiteError)`).
 - **No blocking work on the cooperative thread pool.** SQLite calls run on the

@@ -20,6 +20,15 @@
 - Fault injection for consumers: `SQLiteSwiftTesting` adds
   `SQLiteDatabase.injectFault(_:)` with `SQLiteFault.commitOutcomeUnknown`, so a
   store can test its handling of an unknown commit with a real failing `COMMIT`.
+- Server bridges (`SQLiteSwiftServer`), each behind an opt-in package trait so the
+  default dependency graph stays empty: `SQLiteMetricsObserver` (trait `Metrics`,
+  swift-metrics: operation duration, connection wait, error counts with bounded
+  dimensions), `SQLiteTracingObserver` (trait `Tracing`, swift-distributed-tracing:
+  a client span per operation, nested under the caller's span, errors recorded),
+  `SQLiteLoggingObserver` (trait `Logging`, swift-log, `Logger.current` by default),
+  `SQLiteDatabaseService` (trait `ServiceLifecycle`: closes the database on graceful
+  shutdown, optional scheduled checkpoint and optimize). `SQLiteObservers` combines
+  several observers.
 - FTS5 full-text search on Linux (the vendored engine is compiled with
   `SQLITE_ENABLE_FTS5`), matching Apple's system SQLite.
 

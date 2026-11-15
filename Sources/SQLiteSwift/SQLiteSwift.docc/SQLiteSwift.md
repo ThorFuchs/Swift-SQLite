@@ -1,6 +1,6 @@
 # ``SQLiteSwift``
 
-Durable, bounded SQLite persistence for Swift concurrency, with no package dependencies.
+Durable, bounded SQLite persistence for Swift concurrency, with no package dependencies (server bridges are opt-in traits of the `SQLiteSwiftServer` module).
 
 ## Overview
 
