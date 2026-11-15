@@ -24,12 +24,16 @@ enum ConnectionRole: Sendable, Equatable {
     case reader(Int)
     /// A short-lived read-only connection for ``SQLiteDatabase/resolveCommit(limits:_:)``.
     case probe
+    /// A short-lived read-write connection for maintenance that must not occupy the
+    /// writer (``SQLiteDatabase/vacuum(into:limits:)``). It never creates the file.
+    case maintenance
 
     var threadName: String {
         switch self {
         case .writer: "sqliteswift.w"
         case .reader(let index): "sqliteswift.r\(index)"
         case .probe: "sqliteswift.p"
+        case .maintenance: "sqliteswift.m"
         }
     }
 }
@@ -127,6 +131,7 @@ final class SQLiteConnectionCore: @unchecked Sendable {
         switch role {
         case .writer: flags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
         case .reader, .probe: flags |= SQLITE_OPEN_READONLY
+        case .maintenance: flags |= SQLITE_OPEN_READWRITE
         }
         if case .inMemory = configuration.storage {
             flags |= SQLITE_OPEN_MEMORY

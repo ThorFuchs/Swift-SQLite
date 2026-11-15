@@ -230,7 +230,7 @@ public final class SQLiteDatabase: Sendable {
     }
 
     /// A job token carrying the call's deadline and instruction budget.
-    private func makeToken(_ limits: SQLiteOperationLimits?) throws(SQLiteError) -> SQLiteJobToken {
+    func makeToken(_ limits: SQLiteOperationLimits?) throws(SQLiteError) -> SQLiteJobToken {
         let limits = limits ?? configuration.operationLimits
         try limits.validate()
         return SQLiteJobToken(
