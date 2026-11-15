@@ -1,8 +1,11 @@
 # Swift-SQLite roadmap
 
-Status: updated 12 November 2026. The path to 1.0.0 was agreed: 0.2.0 (truthful
-and bounded), then 0.9.0 (API freeze and public polish), then 1.0.0. The opt-in
-profiles follow as 1.x minor releases. Original proposal: 12 November 2026. It extends the 0.1.0 scope (ADR-0004 phase C
+Status: updated 15 November 2026. 0.9.0 (API freeze, model layer, public polish)
+is released as the 1.0.0 candidate. After 1.0.0 the plan is: **1.1.0** makes the
+package operable on a server (backups, maintenance, instrumentation, fault
+injection), **1.2.0** brings the model layer to servers (async live queries, a
+resumable change stream), and the opt-in profiles follow by consumer demand.
+Original proposal: 12 November 2026. It extends the 0.1.0 scope (ADR-0004 phase C
 requirements from MCP-Server) with what we learned from the Content Collections
 compatibility brief of 12 November 2026. Versions are targets, not commitments.
 Nothing here changes 0.1.0 defaults.
@@ -29,6 +32,7 @@ Nothing here changes 0.1.0 defaults.
 | Swift-Content-Collections (RC1, S09/S11/S15) | Generation store (rollback, `EXTRA`), read-only SQLite source | Rollback store profile, read-only source and image profiles, confinement, raw byte-exact rows, an isolated engine |
 | Swift-JSON (later versioned envelope) | Canonical JSON bytes as BLOBs | Raw byte-exact rows, bounded BLOB reads, file identity (`application_id`) |
 | Apps on iOS 18+ | Local persistence | Same behavior on every OS version, file protection, rollback mode where WAL sidecars are a problem |
+| Server applications (Hummingbird, Vapor, MCP servers) on Linux | Persistence, queries, change feeds | Backups and maintenance, metrics and tracing, graceful shutdown, an async change feed for SSE and WebSockets |
 
 ## What we take from the Content brief
 
@@ -44,7 +48,7 @@ Nothing here changes 0.1.0 defaults.
 | Read-only source profile (`READONLY \| NOFOLLOW \| PRIVATECACHE`, no writer, no pragmas that write) (C2) | **Adopt** | Reading foreign or published databases safely is a general need |
 | Immutable image via `sqlite3_deserialize(READONLY)` with explicit buffer ownership (C1) | **Adopt** | Safe inspection of untrusted or packaged databases without touching the filesystem |
 | Confinement: deny-by-default authorizer through reprepare, `SQLITE_PREPARE_NO_VTAB`, defensive, `temp_store=MEMORY`, `sqlite3_limit` table (C3) | **Adopt as a `SQLiteConfinement` option** | Needed whenever SQL or database content is not fully trusted |
-| Isolated, prefixed, source-identified engine on all platforms (A1–A4) | **Adopt behind a probe** (1.2.0) | Apple's system SQLite differs by OS version (iOS 18 ships an older SQLite than macOS 27) and is compiled with options that conflict with strict profiles (`DQS=3`, `THREADSAFE=2`, mmap up to 1 GiB, shared cache, `USE_URI`). One engine everywhere gives every consumer reproducible behavior |
+| Isolated, prefixed, source-identified engine on all platforms (A1–A4) | **Adopt behind a probe** (later) | Apple's system SQLite differs by OS version (iOS 18 ships an older SQLite than macOS 27) and is compiled with options that conflict with strict profiles (`DQS=3`, `THREADSAFE=2`, mmap up to 1 GiB, shared cache, `USE_URI`). One engine everywhere gives every consumer reproducible behavior |
 | Source generation from Fossil sources with Tcl (A2) | **Adopt as an optional provenance mode** | Release amalgamation plus published hash stays the default; generation from a pinned check-in is offered when a consumer requires it |
 | Lock-file primitive and documented VFS assumptions (B4) | **Adopt the primitive and documentation** | Companion locks are a recurring need; POSIX `fcntl` lock semantics are a common trap |
 | Activity registry, generation pins, retention, GC, request journal, seal rules | **Not adopted** | Domain policy; stays in Content (and in MCP for its equivalents) |
@@ -62,7 +66,10 @@ force a break lands first.
 | 0.9.0 | API review and freeze; community files (SECURITY, CONTRIBUTING, code of conduct, issue and PR templates); CI gates (Thread and Address Sanitizer, API-breakage check against the last tag, release build, Dependabot for actions); hosted DocC; Swift Package Index (`.spi.yml`); public README; SemVer policy; branch protection (enabled 2026-11-15); macOS CI for fork PRs on GitHub-hosted runners if available | released (tag `0.9.0`, release candidate) |
 | 0.9.0 (model layer) | Opt-in model layer (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`) joins the release candidate and its API freeze: record snapshots, conditional writes, a committed-change stream and observable editing handles. Decisions and gates: [MODEL-ARCHITECTURE.md](Documentation/MODEL-ARCHITECTURE.md) | released in `0.9.0` |
 | 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | next |
-| 1.1.0+ | The 0.3.0 and 0.4.0 phases below, renumbered: opt-in profiles and the isolated engine are additive | |
+| 1.1.0 | Operate it on a server: online backup, `VACUUM INTO`, integrity checks, explicit maintenance, dependency-free instrumentation hooks, public fault injection, migration checksums, FTS5 on Linux | planned |
+| 1.2.0 | The model layer on the server: an async live query without the main actor, a resumable change stream, `Observations` support, records from custom SQL, an opt-in Swift-JSON codec | planned |
+| 1.3.0+ | Opt-in profiles (rollback store, read-only source and image, confinement, lock file), scheduled when a consumer needs them | by demand |
+| Later | One isolated engine everywhere, gated by a probe; the modern-Swift watch list | probe first |
 
 ## Phases
 
@@ -114,7 +121,79 @@ be bound (`executeRaw`). The originally planned items:
 Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
 `operationBudget` and `fileIdentity`, under every existing configuration.
 
-### 1.1.0 (was 0.3.0): profiles for durable single-writer stores and safe reading
+### 1.0.0: finish the release
+
+- MCP-Server-Core builds and tests on 0.9.0 with only its version pin changed
+  (statically confirmed; the build waits for disk space on the maintainer's Mac).
+- Re-pin the developer kit to 1.0.0 and run its recipes against the tag.
+- List the package on the Swift Package Index (hosted DocC, badges).
+- Build and test once with the Swift 6.2 upcoming feature
+  `NonisolatedNonsendingByDefault` (SE-0461), so 1.0.0 behaves the same when
+  consumers turn it on.
+- Record a first benchmark baseline (writes, reads, pool contention), so later
+  performance claims have a reference.
+
+### 1.1.0: operate it on a server
+
+The core is complete for storing data; this release makes it operable.
+
+1. **Backups.** `database.backup(to:)` over `sqlite3_backup`, in steps, with progress,
+   cancellation and an operation deadline; `VACUUM INTO` for a compact snapshot.
+2. **Integrity.** `integrityCheck()` and `quickCheck()` with a typed result instead of
+   text rows.
+3. **Explicit maintenance.** Checkpoints on request, `PRAGMA optimize`, incremental
+   vacuum. All called by the consumer; the package starts no background work.
+4. **Instrumentation without dependencies.** Hooks in the core for statement time,
+   the wait for a connection and for locks, checkpoints and limit stops. Bridges to
+   swift-log, swift-metrics, swift-distributed-tracing and swift-service-lifecycle
+   (`Service` with graceful `close()`) come as package traits (SE-0450) or a small
+   companion package, so the core keeps zero dependencies.
+5. **Fault injection for consumers.** The tests here inject unknown commits, busy
+   locks and a full disk through internal hooks. `SQLiteSwiftTesting` makes them
+   public, so consumers can test their own handling of these outcomes.
+6. **Migration checksums.** A store table records each applied migration's hash; an
+   edited shipped migration fails at open with a typed error instead of being a rule
+   in the documentation.
+7. **FTS5 on Linux.** Compile the vendored engine with FTS5, matching Apple's system
+   SQLite, so full-text search works the same everywhere.
+8. **Engine updates.** A scheduled workflow reports new SQLite releases; engine
+   security fixes ship in patch releases.
+
+Acceptance: each feature has tests on macOS and Linux, including cancellation and
+deadline paths; backups are verified by opening and checking the copy.
+
+### 1.2.0: the model layer on the server
+
+1. **Async live query.** `store.records(_:where:)` as an `AsyncSequence` of snapshots,
+   without the main actor, coalescing bursts of changes. It feeds SSE and
+   WebSocket endpoints directly.
+2. **Resumable change stream.** The store's sequence is already durable. A bounded
+   change log lets a consumer call `subscribe(after: sequence)` after a restart
+   (a transactional outbox), with `resyncRequired` when the log no longer reaches
+   back far enough.
+3. **`Observations`.** Document and test model handles and live queries with
+   `Observations` (SE-0475, Swift 6.2, also on Linux) for consumers outside SwiftUI.
+4. **Records from custom SQL.** `fetchAll(_:sql:_:)` maps a query's columns to a
+   record by name, for joins and projections. No query builder.
+5. **Swift-JSON codec.** Exact JSON values as a record column, behind an opt-in trait.
+
+Acceptance: the G4 and G5 evidence standards (barriers, no sleeps, ThreadSanitizer)
+apply, plus a restart test for the resumable stream.
+
+### Modern-Swift watch list
+
+Adopt when stable and useful, not before:
+
+- `~Escapable` types (SE-0446): make "a transaction never leaves its closure" a
+  compile-time guarantee.
+- `Span` and `RawSpan` (Swift 6.2): read BLOBs without copying.
+- Exit tests in Swift Testing: real crash-and-recover tests for the conformance kit.
+- A macro companion package for record descriptors, once the hand-written API has
+  proven itself in use.
+
+### 1.3.0+ (was 0.3.0, then 1.1.0): profiles for durable single-writer stores and safe reading
+
+Scheduled when a consumer (first Content-Collections) needs them.
 
 1. **Rollback store profile.** `SQLiteConfiguration.rollbackStore(path:)`:
    - single connection, `journal_mode=DELETE`, `synchronous=EXTRA`,
@@ -155,7 +234,7 @@ Acceptance: positive and negative tests for every setting and every failure path
 buffer lifetime, authorizer denial after reprepare, and a commit-fault/reopen probe in
 rollback mode.
 
-### 1.2.0 (was 0.4.0): one isolated engine everywhere (gated by a probe)
+### Later (was 0.4.0, then 1.2.0): one isolated engine everywhere (gated by a probe)
 
 **Probe first**, on a branch:
 
@@ -191,18 +270,27 @@ and Linux.
 
 ## Open questions
 
-1. **0.1.0 scope:** wording fix only, or also add `commitOutcomeUnknown` before
-   acceptance?
+1. **Resolved:** 0.1.0 shipped with the typed `commitOutcomeUnknown`.
 2. **Engine version** for the isolated engine: SQLite 3.54.1 (current release), or
    Content's 3.55.0 pre-release candidate `43a48f77…` once released?
 3. **Package traits:** confirm they work with this repo's CI (Swift 6.4, Xcode 27.2)
-   and with consumers that pin exact versions. Settled by the 1.2.0 probe.
+   and with consumers that pin exact versions. Settled by the first trait in 1.1.0
+   (instrumentation bridges); the engine probe reuses the answer.
 4. **Packaging for Content:** vendored closure (no graph change) or a product
    dependency (needs Content's decision). Both are offered.
+5. **Instrumentation bridges:** package traits in this repository, or a separate
+   companion package? Traits keep one repository; a companion keeps this package's
+   resolved graph empty for everyone.
+6. **Change-log retention** for the resumable stream: by count, by age, or both, and
+   who prunes it.
 
 ## Not planned
 
 - Domain logic: task stores, leases, generation pins, retention, GC, request journals.
 - Network filesystems, custom VFSs, encryption codecs.
 - Loadable extensions, shared cache, memory-mapped I/O in strict profiles.
-- A dependency on Swift-JSON.
+- A required dependency on Swift-JSON (the 1.2.0 codec is an opt-in trait).
+- An ORM or query builder, `await` inside transactions, multiple writers,
+  automatic retries of writes, and cloud sync.
+- Change detection across processes by default; at most later, as an explicitly
+  weaker opt-in based on `PRAGMA data_version`.

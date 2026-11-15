@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Documentation
+
+- ROADMAP: the plan after 1.0.0 — 1.1.0 operates it on a server, 1.2.0 brings
+  the model layer to servers, profiles follow by demand; a modern-Swift watch list
+  and clearer non-goals.
+
 ### Added
 
 - Developer kit 0.1.0 for coding agents, pinned to library 0.9.0: an
