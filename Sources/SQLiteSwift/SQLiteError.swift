@@ -162,6 +162,10 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
         /// A table does not have the columns a record mapping needs. See
         /// ``SQLiteError/setting`` (the name is `table.column`).
         public static let schemaMismatch = Code("schemaMismatch")
+        /// A migration that was already applied has changed since (its checksum
+        /// differs from the one recorded when it ran). Only with
+        /// ``SQLiteConfiguration/verifiesMigrationChecksums``. Nothing was written.
+        public static let migrationModified = Code("migrationModified")
         /// A stored value could not be decoded into the requested Swift type (for example
         /// NULL in a non-optional column, invalid UTF-8 text, or an integer out of range).
         /// See ``SQLiteError/column`` and ``SQLiteError/reason``.
@@ -430,6 +434,10 @@ public struct SQLiteError: Error, Sendable, Hashable, CustomStringConvertible {
     }
     public static func fileIdentityMismatch(setting: String, expected: String, actual: String) -> SQLiteError {
         SQLiteError(.fileIdentityMismatch, .setting(SettingMismatch(name: setting, expected: expected, actual: actual)))
+    }
+    public static func migrationModified(version: Int, name: String, expected: String, actual: String) -> SQLiteError {
+        SQLiteError(.migrationModified, .setting(SettingMismatch(
+            name: "migration \(version) (\(name)) checksum", expected: expected, actual: actual)))
     }
     public static func schemaMismatch(setting: String, expected: String, actual: String) -> SQLiteError {
         SQLiteError(.schemaMismatch, .setting(SettingMismatch(name: setting, expected: expected, actual: actual)))

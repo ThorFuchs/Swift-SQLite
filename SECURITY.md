@@ -30,7 +30,9 @@ seven days and to agree a disclosure date with you once a fix is available.
 - **The SQLite engine on Linux:** the vendored amalgamation in
   `Sources/CSQLiteSwift`. Engine vulnerabilities are fixed upstream by the SQLite
   project; we ship the fixed amalgamation in a patch release
-  ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)).
+  ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)). A weekly workflow
+  (`.github/workflows/sqlite-release.yml`) opens an issue when sqlite.org publishes
+  a newer release.
 - **The SQLite engine on Apple platforms** is the system library and is updated by
   Apple with the operating system. Report those to Apple.
 

@@ -29,6 +29,13 @@
   `SQLiteDatabaseService` (trait `ServiceLifecycle`: closes the database on graceful
   shutdown, optional scheduled checkpoint and optimize). `SQLiteObservers` combines
   several observers.
+- Migration checksums (opt-in): `SQLiteConfiguration.verifiesMigrationChecksums`
+  records each applied migration's `checksum` (FNV-1a 64 of version, name and SQL)
+  in `sqliteswift_migration_checksums` and refuses a file whose applied migrations
+  changed (`SQLiteError.Code.migrationModified`) before any new migration runs.
+  Existing files are adopted, not refused.
+- SQLite release watch: `Scripts/check-sqlite-release.sh` and a weekly workflow that
+  opens an issue (once per release) when sqlite.org publishes a newer amalgamation.
 - FTS5 full-text search on Linux (the vendored engine is compiled with
   `SQLITE_ENABLE_FTS5`), matching Apple's system SQLite.
 

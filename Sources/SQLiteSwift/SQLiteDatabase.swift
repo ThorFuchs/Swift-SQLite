@@ -109,7 +109,14 @@ public final class SQLiteDatabase: Sendable {
                 _ = try core.checkSchemaVersion(supported: migrations.count)
                 try core.applyFileIdentity(identity)
                 try core.configureWriter()
+                if configuration.verifiesMigrationChecksums {
+                    // Check what already ran before running anything new.
+                    try core.reconcileMigrationChecksums(migrations)
+                }
                 try core.migrate(migrations)
+                if configuration.verifiesMigrationChecksums {
+                    try core.reconcileMigrationChecksums(migrations)
+                }
             }
             for index in 0..<configuration.readerCount {
                 let reader = try SQLiteConnection(role: .reader(index), configuration: configuration)

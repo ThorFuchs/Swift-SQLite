@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: Apache-2.0
+# Weekly: opens an issue when sqlite.org publishes a newer amalgamation than the one
+# vendored for Linux. Engine security fixes ship in patch releases; updating stays a
+# reviewed pull request (Sources/CSQLiteSwift/PROVENANCE.md describes the steps).
+name: SQLite release watch
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  watch:
+    name: Check for a newer SQLite release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare with sqlite.org
+        id: compare
+        run: |
+          set +e
+          RESULT="$(Scripts/check-sqlite-release.sh)"
+          STATUS=$?
+          set -e
+          echo "$RESULT"
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" -eq 10 ]; then echo "newer=true" >> "$GITHUB_OUTPUT"; elif [ "$STATUS" -ne 0 ]; then exit "$STATUS"; fi
+      - name: Open an issue (once per release)
+        if: steps.compare.outputs.newer == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.compare.outputs.result }}
+        run: |
+          LATEST="$(echo "$RESULT" | sed -n 's/.*latest=\([^ ]*\).*/\1/p')"
+          TITLE="SQLite $LATEST is available"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "\"$TITLE\" in:title" --json number --jq 'length' | grep -qv '^0$'; then
+            echo "An issue for $LATEST exists already."
+            exit 0
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "sqlite.org lists a newer amalgamation than the one vendored for Linux.
+
+          \`$RESULT\`
+
+          Check the [release notes](https://sqlite.org/changes.html) for security fixes. To update: download the archive, verify its published SHA3-256, replace \`sqlite3.c\` and \`include/sqlite3.h\`, update the hashes in \`Sources/CSQLiteSwift/PROVENANCE.md\` and \`Scripts/verify-amalgamation.sh\`, run the full test suite on Linux, and ship it in a patch release."

@@ -204,6 +204,13 @@ public struct SQLiteConfiguration: Sendable {
     /// Watches every operation, for metrics, tracing and logs (see
     /// ``SQLiteObserver``). Default `nil`.
     public var observer: (any SQLiteObserver)?
+    /// Records a checksum of every applied migration in the table
+    /// `sqliteswift_migration_checksums` and, on every open, refuses a file whose
+    /// applied migrations have changed since (``SQLiteError/Code/migrationModified``),
+    /// before any new migration runs. Migrations without a recorded checksum (an
+    /// existing file, or this option turned on later) are recorded, not refused.
+    /// Default `false`.
+    public var verifiesMigrationChecksums: Bool
 
     /// A file database with the defaults described on ``SQLiteConfiguration``.
     public init(path: String) {
@@ -220,6 +227,7 @@ public struct SQLiteConfiguration: Sendable {
         self.operationLimits = .unlimited
         self.fileIdentity = nil
         self.observer = nil
+        self.verifiesMigrationChecksums = false
     }
 
     /// The file path, or `":memory:"`.
