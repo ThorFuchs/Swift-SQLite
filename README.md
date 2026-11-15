@@ -2,6 +2,9 @@
 
 [![Native CI](https://github.com/ThorFuchs/Swift-SQLite/actions/workflows/native.yml/badge.svg)](https://github.com/ThorFuchs/Swift-SQLite/actions/workflows/native.yml)
 [![Linux CI](https://github.com/ThorFuchs/Swift-SQLite/actions/workflows/linux.yml/badge.svg)](https://github.com/ThorFuchs/Swift-SQLite/actions/workflows/linux.yml)
+[![Release](https://img.shields.io/github/v/release/ThorFuchs/Swift-SQLite?include_prereleases&sort=semver)](https://github.com/ThorFuchs/Swift-SQLite/releases)
+[![Swift 6.4](https://img.shields.io/badge/Swift-6.4-F05138.svg)](https://www.swift.org)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%2015%2B%20%7C%20iOS%2018%2B%20%7C%20Linux-lightgrey.svg)](#installation)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 Durable, bounded SQLite for Swift concurrency. Zero dependencies.
@@ -11,6 +14,18 @@ gives you one writer and a pool of snapshot readers, each on its own thread; dur
 commits that report their outcome truthfully; and a bound on everything: time, work,
 rows and bytes. Your store keeps its domain logic, and this package handles
 connections, transactions, migrations and the hard edges.
+
+- **Core** (`SQLiteSwift`): connections, transactions, migrations, limits,
+  compare-and-set, paging and truthful commit outcomes.
+- **Opt-in model layer** (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`): typed
+  records, conflict-safe writes, a committed-change stream and an observable editing
+  context for apps.
+- **Conformance kit** (`SQLiteSwiftTesting`): 13 checks your own store runs in its
+  tests.
+- **Developer kit** for coding agents: a `swift-sqlite` skill with compiled recipes.
+
+> **Status:** 0.9.0 is the release candidate for 1.0.0. The API is frozen; 1.0.0
+> follows once downstream validation finishes.
 
 ```swift
 import SQLiteSwift
@@ -38,6 +53,18 @@ let body = try await database.read(limits: SQLiteOperationLimits(timeout: .secon
 
 await database.close()
 ```
+
+## When it fits
+
+Use Swift-SQLite when you build a store whose correctness you need to argue: a task
+queue, a cache, a document or content store, a server component. It gives you
+explicit transactions, SQL you write yourself, bounded resources, and no
+automatic retries of your writes.
+
+Look elsewhere if you want an ORM with query builders and associations, automatic
+schema generation, or iCloud sync; GRDB, SQLite.swift, SwiftData and Core Data cover
+those. Swift-SQLite's module is `SQLiteSwift`; it is unrelated to SQLite.swift
+(module `SQLite`).
 
 ## Installation
 
@@ -186,9 +213,17 @@ swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0
   --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
 ```
 
+Developer kit:
+
+```sh
+python3 Scripts/validate_developer_kit.py   # manifests, links, recipe markers, pins
+Scripts/run_kit_recipes.sh                   # every recipe against this checkout
+```
+
 CI runs on macOS (build, tests, Thread Sanitizer, iOS cross-compile, docs, API check)
 and on Linux x86_64 and arm64 (build and tests; Thread and Address Sanitizer on
-x86_64).
+x86_64), and validates the developer kit and runs its recipes. `main` is protected:
+every pull request needs these checks to pass.
 
 ## Notes
 
@@ -206,5 +241,6 @@ described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache License 2.0; see [LICENSE](LICENSE). SQLite is in the public domain; see
+Swift-SQLite is licensed under the [Apache License 2.0](LICENSE); see also
+[NOTICE](NOTICE). SQLite, compiled in on Linux, is in the public domain; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
