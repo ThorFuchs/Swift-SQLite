@@ -28,6 +28,23 @@ let package = Package(
         // Opt-in model layer (see Documentation/MODEL-ARCHITECTURE.md).
         .library(name: "SQLiteSwiftModels", targets: ["SQLiteSwiftModels"]),
         .library(name: "SQLiteSwiftModelContext", targets: ["SQLiteSwiftModelContext"]),
+        // Bridges to the Swift server ecosystem; each is switched on by a trait.
+        .library(name: "SQLiteSwiftServer", targets: ["SQLiteSwiftServer"]),
+    ],
+    // Every trait is off by default, so a consumer's dependency graph stays empty
+    // unless it asks for a bridge.
+    traits: [
+        .trait(name: "Metrics", description: "SQLiteMetricsObserver for swift-metrics."),
+        .trait(name: "Tracing", description: "SQLiteTracingObserver for swift-distributed-tracing."),
+        .trait(name: "Logging", description: "SQLiteLoggingObserver for swift-log."),
+        .trait(name: "ServiceLifecycle", description: "SQLiteDatabaseService for swift-service-lifecycle."),
+        .default(enabledTraits: []),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-metrics.git", from: "2.13.0"),
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.7.4"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.17.0"),
+        .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.13.0"),
     ],
     targets: [
         // Pinned, unmodified SQLite amalgamation. `shim.c` compiles it on Linux only;
@@ -64,6 +81,28 @@ let package = Package(
         .target(
             name: "SQLiteSwiftModelContext",
             dependencies: ["SQLiteSwiftModels", "SQLiteSwift"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .target(
+            name: "SQLiteSwiftServer",
+            dependencies: [
+                "SQLiteSwift",
+                .product(name: "Metrics", package: "swift-metrics", condition: .when(traits: ["Metrics"])),
+                .product(name: "Tracing", package: "swift-distributed-tracing", condition: .when(traits: ["Tracing"])),
+                .product(name: "Logging", package: "swift-log", condition: .when(traits: ["Logging"])),
+                .product(name: "ServiceLifecycle", package: "swift-service-lifecycle", condition: .when(traits: ["ServiceLifecycle"])),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "SQLiteSwiftServerTests",
+            dependencies: [
+                "SQLiteSwiftServer", "SQLiteSwift", "SQLiteSwiftTesting",
+                .product(name: "MetricsTestKit", package: "swift-metrics", condition: .when(traits: ["Metrics"])),
+                .product(name: "InMemoryTracing", package: "swift-distributed-tracing", condition: .when(traits: ["Tracing"])),
+                .product(name: "Logging", package: "swift-log", condition: .when(traits: ["Logging"])),
+                .product(name: "ServiceLifecycleTestKit", package: "swift-service-lifecycle", condition: .when(traits: ["ServiceLifecycle"])),
+            ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

@@ -7,7 +7,7 @@
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2015%2B%20%7C%20iOS%2018%2B%20%7C%20Linux-lightgrey.svg)](#installation)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Durable, bounded SQLite for Swift concurrency. Zero dependencies.
+Durable, bounded SQLite for Swift concurrency. Zero dependencies by default.
 
 Swift-SQLite is a small foundation for building persistent stores on SQLite. It
 gives you one writer and a pool of snapshot readers, each on its own thread; durable
@@ -87,11 +87,11 @@ targets: [
 
 | | |
 | --- | --- |
-| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers); opt-in model layer: `SQLiteSwiftModels` and `SQLiteSwiftModelContext` |
+| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers); opt-in model layer: `SQLiteSwiftModels` and `SQLiteSwiftModelContext`; server bridges: `SQLiteSwiftServer` |
 | **Platforms** | macOS 15+, iOS 18+, Linux (x86_64 and arm64) |
 | **Toolchain** | Swift 6.4, Swift 6 language mode, strict concurrency, typed throws |
 | **SQLite** | The system SQLite on Apple platforms; a pinned, unmodified SQLite 3.54.1 amalgamation on Linux ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)) |
-| **Dependencies** | None |
+| **Dependencies** | None by default. The opt-in traits `Metrics`, `Tracing`, `Logging` and `ServiceLifecycle` add swift-metrics, swift-distributed-tracing, swift-log and swift-service-lifecycle; without them SwiftPM resolves nothing |
 
 ## What it guarantees
 
@@ -108,9 +108,39 @@ targets: [
 | Bounded reads | Row limits and byte budgets on every query (1 MiB default, 16 MiB hard cap, also enforced as `SQLITE_LIMIT_LENGTH`), `length()` checks before loading BLOBs, and a bounded statement cache. Results are never silently truncated. |
 | Byte-exact values | `queryRaw` and `executeRaw` keep TEXT as its stored bytes, including invalid UTF-8 and NUL. |
 | Helpers | Compare-and-set with typed guards, keyset pagination, typed predicates with bound values, quoted identifiers, expiry queries on an injectable clock. |
-| Observability | An optional `SQLiteObserver` sees every operation's kind, connection wait, duration and outcome, on the calling task, for metrics, tracing and logs. |
+| Observability | An optional `SQLiteObserver` sees every operation's kind, connection wait, duration and outcome, on the calling task. Bridges to swift-metrics, swift-distributed-tracing (spans nest under the request's span) and swift-log, plus a swift-service-lifecycle service, come as opt-in package traits. |
 | Errors | `SQLiteError` carries a `code` that can grow without breaking your `switch`, plus typed detail. Catch by code: `catch SQLiteError.Code.busy`. |
 | iOS | Optional data-protection class for the database files. |
+
+## On a server
+
+Turn on the traits you need. Without them the package still adds no dependencies:
+
+```swift
+.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.1.0",
+         traits: ["Metrics", "Tracing", "Logging", "ServiceLifecycle"]),
+// target: .product(name: "SQLiteSwiftServer", package: "Swift-SQLite")
+```
+
+```swift
+import SQLiteSwift
+import SQLiteSwiftServer
+
+var configuration = SQLiteConfiguration(path: path)
+configuration.observer = SQLiteObservers(
+    SQLiteMetricsObserver(database: "orders"),   // durations, waits, error counts
+    SQLiteTracing.observer(),                    // a client span per operation
+    SQLiteLoggingObserver())                     // failures and slow operations
+let database = try await SQLiteDatabase.open(configuration, migrations: migrations)
+
+let group = ServiceGroup(
+    services: [httpServer, SQLiteDatabaseService(database, maintenance: .init(every: .seconds(300)))],
+    gracefulShutdownSignals: [.sigterm], logger: logger)
+try await group.run()   // closes the database on graceful shutdown
+```
+
+Backups (`backup(to:)`, `vacuum(into:)`), integrity checks and maintenance are
+explicit calls; see Getting Started.
 
 ## Model layer (opt-in)
 

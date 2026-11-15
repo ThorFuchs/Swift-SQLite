@@ -276,9 +276,9 @@ and Linux.
    (instrumentation bridges); the engine probe reuses the answer.
 4. **Packaging for Content:** vendored closure (no graph change) or a product
    dependency (needs Content's decision). Both are offered.
-5. **Instrumentation bridges:** package traits in this repository, or a separate
-   companion package? Traits keep one repository; a companion keeps this package's
-   resolved graph empty for everyone.
+5. **Resolved (1.1.0): package traits in this repository.** Tested with Swift 6.4: a
+   dependency used only by a disabled trait is neither resolved nor fetched, so the
+   default graph stays empty, also for consumers of the `SQLiteSwiftServer` product.
 6. **Change-log retention** for the resumable stream: by count, by age, or both, and
    who prunes it.
 

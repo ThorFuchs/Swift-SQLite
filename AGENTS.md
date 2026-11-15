@@ -7,7 +7,8 @@ For help *using* the library in another project, see the developer kit
 ## Ground rules
 
 - The core module is `SQLiteSwift`. It has no package dependencies and must keep
-  none. The model layer (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`) builds on
+  none. External packages are allowed only in `SQLiteSwiftServer`, each behind an
+  opt-in package trait, so the default dependency graph stays empty. The model layer (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`) builds on
   the core's public API; the core never imports it.
 - The public API is frozen for 1.0.0. Don't break source compatibility;
   `Scripts/check-api.sh` compares against the latest tag.

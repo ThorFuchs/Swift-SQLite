@@ -156,3 +156,41 @@ extension SQLiteDatabase {
         try await writer.run { (core) throws(SQLiteError) in core.failNextCommitForTesting = true }
     }
 }
+
+/// Several observers as one, for example metrics, tracing and logs together.
+///
+/// ```swift
+/// configuration.observer = SQLiteObservers(metrics, tracing, logging)
+/// ```
+///
+/// They start in order and finish in reverse order, like nested scopes.
+public struct SQLiteObservers: SQLiteObserver {
+    public let observers: [any SQLiteObserver]
+
+    public init(_ observers: any SQLiteObserver...) {
+        self.observers = observers
+    }
+
+    public init(_ observers: [any SQLiteObserver]) {
+        self.observers = observers
+    }
+
+    public func operationWillStart(_ operation: SQLiteOperation) -> [any Sendable] {
+        observers.map { Self.start($0, operation) }
+    }
+
+    public func operationDidFinish(_ report: SQLiteOperationReport, context: [any Sendable]) {
+        for (observer, value) in zip(observers, context).reversed() {
+            Self.finish(observer, report, value)
+        }
+    }
+
+    private static func start<O: SQLiteObserver>(_ observer: O, _ operation: SQLiteOperation) -> any Sendable {
+        observer.operationWillStart(operation)
+    }
+
+    private static func finish<O: SQLiteObserver>(_ observer: O, _ report: SQLiteOperationReport, _ value: any Sendable) {
+        guard let context = value as? O.Context else { return }
+        observer.operationDidFinish(report, context: context)
+    }
+}
