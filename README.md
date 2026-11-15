@@ -124,6 +124,10 @@ Guides: [Defining records](Sources/SQLiteSwiftModels/SQLiteSwiftModels.docc/Defi
 - API reference: every public symbol is documented in DocC. Build the archives
   for all three modules with `Scripts/build-docs.sh`.
 - [CHANGELOG](CHANGELOG.md), including how to migrate between versions.
+- [Developer kit](Documentation/AgentDeveloperKit.md) for coding agents (Claude Code,
+  Codex): an instruction-only `swift-sqlite` skill with 13 compiled recipes. Install in
+  Claude Code with `/plugin marketplace add ThorFuchs/Swift-SQLite`, then
+  `/plugin install swift-sqlite@swift-sqlite`. Contributors: [AGENTS.md](AGENTS.md).
 - [Roadmap](ROADMAP.md): the opt-in profiles planned after 1.0.0 (rollback store,
   read-only sources and images, confinement, one isolated engine on every platform).
 

@@ -48,6 +48,23 @@ jobs:
           retention-days: 30
           path: .build/ci/
 
+  developer-kit:
+    name: Developer kit / validate and run recipes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: swift@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python for the validator
+        run: command -v python3 || (apt-get update && apt-get install -y --no-install-recommends python3)
+      - name: Validate the kit (files, manifests, links, recipe markers, pins)
+        run: python3 Scripts/validate_developer_kit.py
+      - name: Run every recipe against this checkout (debug and release)
+        run: Scripts/run_kit_recipes.sh
+
   sanitizers:
     name: Linux / sanitizers (x86_64)
     runs-on: ubuntu-latest
