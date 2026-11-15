@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Developer kit 0.2.0: pinned to library 1.0.0 (tag, commit and tree in its
+  compatibility map); new integrations use `from: "1.0.0"`; the version reference
+  lists 1.0.0. All 13 recipes pass against the published 1.0.0 tag.
+
 ## 1.0.0 — 2026-11-15
 
 The first stable release. The public API is the one frozen in 0.9.0, unchanged:

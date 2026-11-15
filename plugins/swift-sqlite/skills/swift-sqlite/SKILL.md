@@ -6,7 +6,7 @@ description: "Integrate ThorFuchs/Swift-SQLite (module SQLiteSwift) into Swift c
 # Swift-SQLite consumer integration
 
 Help the developer implement and test their requested consumer behavior.
-This is kit 0.1.0, with recipes for released library **0.9.0**.
+This is kit 0.2.0, with recipes for released library **1.0.0**.
 The kit version is independent of the library version.
 It adds instructions and examples, without changing the library.
 
@@ -23,8 +23,8 @@ and products actually imported by the affected target.
 Match `https://github.com/ThorFuchs/Swift-SQLite.git`. Its module is `SQLiteSwift`.
 `import SQLite` is a different package (stephencelis/SQLite.swift); GRDB, Core Data,
 SwiftData and `SQLite3` are other tools. Do not mix their APIs into this one.
-If the dependency is absent, add it with `.upToNextMinor(from: "0.9.0")` for a new
-integration (`from: "1.0.0"` once 1.0.0 exists), unless the user chose otherwise.
+If the dependency is absent, add it with `from: "1.0.0"` for a new integration,
+unless the user chose otherwise.
 Preserve an existing requirement unless its change is part of the request.
 
 Load [version and product selection](references/versions.md) for manifest choices.

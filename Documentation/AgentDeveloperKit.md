@@ -1,6 +1,6 @@
 # Swift-SQLite developer kit
 
-Kit **0.1.0** is pinned to released **Swift-SQLite 0.9.0**. The two version numbers
+Kit **0.2.0** is pinned to released **Swift-SQLite 1.0.0**. The two version numbers
 are separate: the kit adds instructions and examples for coding agents and changes
 nothing in the library.
 
@@ -69,8 +69,8 @@ To move the kit to a new library release: change the pin in the consumer's
 
 ## Status
 
-- Kit 0.1.0 is a source candidate in this repository. A download release
-  (`developer-kit-v0.1.0`) is a separate maintainer decision.
-- The kit will be re-pinned to 1.0.0 when the library ships it.
+- Kit 0.2.0 is a source candidate in this repository (0.1.0 targeted library
+  0.9.0). A download release (`developer-kit-v0.2.0`) is a separate maintainer
+  decision.
 - Installation from GitHub and end-to-end use in an agent session are not recorded
   yet.

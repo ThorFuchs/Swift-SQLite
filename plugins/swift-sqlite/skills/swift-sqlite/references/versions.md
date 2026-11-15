@@ -1,6 +1,6 @@
 # Versions and products
 
-The kit is validated against library **0.9.0** (tag `0.9.0`). Use only APIs that
+The kit is validated against library **1.0.0** (tag `1.0.0`). Use only APIs that
 exist in the version the consumer actually resolves.
 
 | Library version | Adds |
@@ -8,15 +8,17 @@ exist in the version the consumer actually resolves.
 | 0.1.0 | `SQLiteDatabase` (one writer, reader pool, own threads), `SQLiteConfiguration`, migrations on `user_version`, `write`/`read`/`writeOrRollback`, `execute`/`query`/`queryOne`/`scalar`, `compareAndSet` with `alsoRequire`, `queryPage` keyset paging, `readBlob`, `deleteExpired`, limits, `SQLiteSwiftTesting` with the conformance kit |
 | 0.2.0 | `writeReportingOutcome`, `resolveCommit`, `commitOutcomeUnknown`; `SQLiteOperationLimits` (deadlines, instruction budgets); `queryRaw`/`executeRaw` with `SQLiteRawValue`; `SQLiteFileIdentity`; extended settings and `effectiveSettings()`; `SQLiteError` and conformance checks become extensible structs |
 | 0.9.0 | API freeze for 1.0.0. `SQLitePredicate` is a struct (build with the same `.equals`, `.notIn`, … spellings; don't pattern-match on cases); `SQLiteError.isStop` renamed `isInterruption`; `SQLiteSynchronous.extra`; new codes `schemaMismatch`, `invalidStoredValue`; new products `SQLiteSwiftModels` and `SQLiteSwiftModelContext` |
+| 1.0.0 | The first stable release: the 0.9.0 API, unchanged. Upgrading from 0.9.0 needs only the new requirement |
 
 From 1.0.0 on, minor releases only add API, error codes and conformance checks;
-only a major release may break source compatibility. Before 1.0.0, pin with
-`.upToNextMinor(from:)`.
+only a major release may break source compatibility, so `from: "1.0.0"` is safe.
+A consumer still on 0.x pinned with `.upToNextMinor(from:)`; moving from 0.9.0 to
+1.0.0 needs no code change, from 0.2.0 see the 0.9.0 breaking changes above.
 
 ## Manifest
 
 ```text
-.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", .upToNextMinor(from: "0.9.0"))
+.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.0.0")
 
 .product(name: "SQLiteSwift", package: "Swift-SQLite")             // library code
 .product(name: "SQLiteSwiftModels", package: "Swift-SQLite")       // records, store

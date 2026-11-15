@@ -1,22 +1,139 @@
 {
   "schema_version": 1,
-  "kit_version": "0.1.0",
+  "kit_version": "0.2.0",
   "note": "Prompts for evaluating the swift-sqlite skill in a fresh agent session. Kept outside the skill and its archives. 'expect' lists behavior a reviewer checks; 'trigger' says whether the skill should be used.",
   "cases": [
-    {"id": "add-dependency", "trigger": true, "prompt": "Add Swift-SQLite to my package and store user settings in a table.", "expect": ["Matches ThorFuchs/Swift-SQLite and imports SQLiteSwift, not SQLite", "Uses .upToNextMinor(from: \"0.9.0\") unless told otherwise", "Numbered migration, bound values, awaits close()"]},
-    {"id": "no-await-in-tx", "trigger": true, "prompt": "Inside database.write, fetch a URL and store the response.", "expect": ["Explains transaction closures are synchronous", "Fetches before the write, stores inside it"]},
-    {"id": "sql-injection", "trigger": true, "prompt": "Insert the user's search term into a SQL query with Swift-SQLite.", "expect": ["Binds the value with ? and SQLiteValue", "Never interpolates the term into SQL"]},
-    {"id": "edit-migration", "trigger": true, "prompt": "Change migration 1 to add a column to the shipped table.", "expect": ["Refuses to edit a shipped migration", "Adds migration n+1 instead"]},
-    {"id": "commit-unknown", "trigger": true, "prompt": "My write threw commitOutcomeUnknown. Just retry it.", "expect": ["Does not retry blindly", "Resolves with resolveCommit using a key chosen before the write"]},
-    {"id": "row-limit", "trigger": true, "prompt": "My query throws rowLimitExceeded; set the limit to Int.max.", "expect": ["Explains results are never truncated", "Suggests queryPage or a finite limit chosen with the user"]},
-    {"id": "error-switch", "trigger": true, "prompt": "Handle Swift-SQLite errors exhaustively in a switch.", "expect": ["Switches on error.code with a default branch", "Explains codes are an extensible struct"]},
-    {"id": "conflict-handling", "trigger": true, "prompt": "Update a record but don't overwrite someone else's change.", "expect": ["Uses compareAndSet or update(_:expecting:)", "Handles conflict / missing as values"]},
-    {"id": "context-conflict", "trigger": true, "prompt": "In my SwiftUI app, saving shows a conflict. Make it go away.", "expect": ["Does not pick useRemote/keepLocal silently", "Asks or exposes the choice to the user"]},
-    {"id": "conformance-tests", "trigger": true, "prompt": "Test my store built on Swift-SQLite.", "expect": ["Adds SQLiteSwiftTesting to the test target only", "Runs SQLiteConformanceKit.Check.allCases"]},
-    {"id": "older-version", "trigger": true, "prompt": "Use SQLiteModelStore in my project, which resolves Swift-SQLite 0.2.0.", "expect": ["Notices the API needs 0.9.0", "Does not upgrade silently"]},
-    {"id": "grdb", "trigger": false, "prompt": "Write a GRDB migration and a ValueObservation.", "expect": ["Does not use the swift-sqlite skill"]},
-    {"id": "sqlite-swift", "trigger": false, "prompt": "Using stephencelis/SQLite.swift, define a Table and query it.", "expect": ["Does not use the swift-sqlite skill"]},
-    {"id": "core-data", "trigger": false, "prompt": "Add a Core Data entity and a fetch request.", "expect": ["Does not use the swift-sqlite skill"]},
-    {"id": "swiftdata", "trigger": false, "prompt": "Create a SwiftData @Model and a @Query.", "expect": ["Does not use the swift-sqlite skill"]}
+    {
+      "id": "add-dependency",
+      "trigger": true,
+      "prompt": "Add Swift-SQLite to my package and store user settings in a table.",
+      "expect": [
+        "Matches ThorFuchs/Swift-SQLite and imports SQLiteSwift, not SQLite",
+        "Uses from: \"1.0.0\" unless told otherwise",
+        "Numbered migration, bound values, awaits close()"
+      ]
+    },
+    {
+      "id": "no-await-in-tx",
+      "trigger": true,
+      "prompt": "Inside database.write, fetch a URL and store the response.",
+      "expect": [
+        "Explains transaction closures are synchronous",
+        "Fetches before the write, stores inside it"
+      ]
+    },
+    {
+      "id": "sql-injection",
+      "trigger": true,
+      "prompt": "Insert the user's search term into a SQL query with Swift-SQLite.",
+      "expect": [
+        "Binds the value with ? and SQLiteValue",
+        "Never interpolates the term into SQL"
+      ]
+    },
+    {
+      "id": "edit-migration",
+      "trigger": true,
+      "prompt": "Change migration 1 to add a column to the shipped table.",
+      "expect": [
+        "Refuses to edit a shipped migration",
+        "Adds migration n+1 instead"
+      ]
+    },
+    {
+      "id": "commit-unknown",
+      "trigger": true,
+      "prompt": "My write threw commitOutcomeUnknown. Just retry it.",
+      "expect": [
+        "Does not retry blindly",
+        "Resolves with resolveCommit using a key chosen before the write"
+      ]
+    },
+    {
+      "id": "row-limit",
+      "trigger": true,
+      "prompt": "My query throws rowLimitExceeded; set the limit to Int.max.",
+      "expect": [
+        "Explains results are never truncated",
+        "Suggests queryPage or a finite limit chosen with the user"
+      ]
+    },
+    {
+      "id": "error-switch",
+      "trigger": true,
+      "prompt": "Handle Swift-SQLite errors exhaustively in a switch.",
+      "expect": [
+        "Switches on error.code with a default branch",
+        "Explains codes are an extensible struct"
+      ]
+    },
+    {
+      "id": "conflict-handling",
+      "trigger": true,
+      "prompt": "Update a record but don't overwrite someone else's change.",
+      "expect": [
+        "Uses compareAndSet or update(_:expecting:)",
+        "Handles conflict / missing as values"
+      ]
+    },
+    {
+      "id": "context-conflict",
+      "trigger": true,
+      "prompt": "In my SwiftUI app, saving shows a conflict. Make it go away.",
+      "expect": [
+        "Does not pick useRemote/keepLocal silently",
+        "Asks or exposes the choice to the user"
+      ]
+    },
+    {
+      "id": "conformance-tests",
+      "trigger": true,
+      "prompt": "Test my store built on Swift-SQLite.",
+      "expect": [
+        "Adds SQLiteSwiftTesting to the test target only",
+        "Runs SQLiteConformanceKit.Check.allCases"
+      ]
+    },
+    {
+      "id": "older-version",
+      "trigger": true,
+      "prompt": "Use SQLiteModelStore in my project, which resolves Swift-SQLite 0.2.0.",
+      "expect": [
+        "Notices the API needs 0.9.0",
+        "Does not upgrade silently"
+      ]
+    },
+    {
+      "id": "grdb",
+      "trigger": false,
+      "prompt": "Write a GRDB migration and a ValueObservation.",
+      "expect": [
+        "Does not use the swift-sqlite skill"
+      ]
+    },
+    {
+      "id": "sqlite-swift",
+      "trigger": false,
+      "prompt": "Using stephencelis/SQLite.swift, define a Table and query it.",
+      "expect": [
+        "Does not use the swift-sqlite skill"
+      ]
+    },
+    {
+      "id": "core-data",
+      "trigger": false,
+      "prompt": "Add a Core Data entity and a fetch request.",
+      "expect": [
+        "Does not use the swift-sqlite skill"
+      ]
+    },
+    {
+      "id": "swiftdata",
+      "trigger": false,
+      "prompt": "Create a SwiftData @Model and a @Query.",
+      "expect": [
+        "Does not use the swift-sqlite skill"
+      ]
+    }
   ]
 }
