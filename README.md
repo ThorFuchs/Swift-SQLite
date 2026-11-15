@@ -215,6 +215,13 @@ swift build --build-tests --scratch-path .build/ios --triple arm64-apple-ios18.0
   --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
 ```
 
+Benchmarks (release build, separate package; baseline in
+[Documentation/Benchmarks.md](Documentation/Benchmarks.md)):
+
+```sh
+Scripts/run-benchmarks.sh
+```
+
 Developer kit:
 
 ```sh

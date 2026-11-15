@@ -107,3 +107,9 @@ jobs:
         run: |
           swift build --build-tests
           swift test
+      - name: Test with NonisolatedNonsendingByDefault (SE-0461)
+        # Consumers may turn this Swift 6.2 upcoming feature on; the package must
+        # behave the same with it.
+        run: |
+          swift test --scratch-path .build/nonsending \
+            -Xswiftc -enable-upcoming-feature -Xswiftc NonisolatedNonsendingByDefault
