@@ -8,7 +8,7 @@ import PackageDescription
 let package = Package(
     name: "SwiftSQLiteKitRecipes",
     platforms: [.macOS(.v15), .iOS(.v18)],
-    dependencies: [.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", exact: "0.9.0")],
+    dependencies: [.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", exact: "1.0.0")],
     targets: [.executableTarget(name: "Consumer", dependencies: [
         .product(name: "SQLiteSwift", package: "Swift-SQLite"),
         .product(name: "SQLiteSwiftModels", package: "Swift-SQLite"),

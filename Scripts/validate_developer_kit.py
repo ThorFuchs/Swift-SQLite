@@ -13,8 +13,8 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugins/swift-sqlite"
 SKILL = PLUGIN / "skills/swift-sqlite"
-KIT_VERSION = "0.1.0"
-LIBRARY_VERSION = "0.9.0"
+KIT_VERSION = "0.2.0"
+LIBRARY_VERSION = "1.0.0"
 NAME = "swift-sqlite"
 MAX_FILE_BYTES = 200_000
 REQUIRED = [
