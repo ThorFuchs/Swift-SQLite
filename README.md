@@ -155,8 +155,10 @@ Guides: [Defining records](Sources/SQLiteSwiftModels/SQLiteSwiftModels.docc/Defi
   Codex): an instruction-only `swift-sqlite` skill with 13 compiled recipes. Install in
   Claude Code with `/plugin marketplace add ThorFuchs/Swift-SQLite`, then
   `/plugin install swift-sqlite@swift-sqlite`. Contributors: [AGENTS.md](AGENTS.md).
-- [Roadmap](ROADMAP.md): the opt-in profiles planned after 1.0.0 (rollback store,
-  read-only sources and images, confinement, one isolated engine on every platform).
+- [Roadmap](ROADMAP.md): after 1.0.0, operating it on a server (1.1.0: backups,
+  maintenance, instrumentation, fault injection), the model layer on the server
+  (1.2.0: async live queries, a resumable change stream), then opt-in profiles by
+  demand.
 
 ## Test your store: the conformance kit
 
