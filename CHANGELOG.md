@@ -11,6 +11,17 @@
   `Scripts/run_kit_recipes.sh` and `Scripts/package_developer_kit.py`; CI validates
   the kit and runs every recipe against each pull request. The library is unchanged.
 - `AGENTS.md` for contributors.
+- `NOTICE` file (Apache-2.0); SPDX headers on every source, script and workflow
+  file.
+
+### Changed
+
+- README: release, Swift and platform badges, an overview of the four products and
+  the developer kit, when the package fits and when not, and the protected `main`.
+- CONTRIBUTING, SECURITY, the bug report form (a product field) and the pull
+  request template cover the model layer and the developer kit.
+- The observable-context research spike is marked as historical and points to the
+  shipped model layer.
 
 ## 0.9.0 — 2026-11-15
 

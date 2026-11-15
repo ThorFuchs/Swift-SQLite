@@ -1,6 +1,13 @@
-# Observable model-context research spike
+# Observable model-context research spike (historical)
 
-This branch contains a test-only, article-specific feasibility prototype in `Tests/SQLiteSwiftTests/ObservableSpikeTests.swift`. It is not a production API or an integration into SQLiteSwift. Its purpose is to explore Sendable snapshots, revision-checked transactions, generic main-actor Observation, explicit saves and conflict behavior.
+> **Superseded.** This spike informed the model layer that now ships as the
+> `SQLiteSwiftModels` and `SQLiteSwiftModelContext` products (0.9.0). Its decisions,
+> what it proved and where the shipped design differs (for example, an incarnation
+> instead of the identity registry below) are recorded in
+> [MODEL-ARCHITECTURE.md](../../Documentation/MODEL-ARCHITECTURE.md). The spike's
+> tests stay in the suite as evidence; nothing here is public API.
+
+This directory describes a test-only, article-specific feasibility prototype in `Tests/SQLiteSwiftTests/ObservableSpikeTests.swift`. It is not a production API or an integration into SQLiteSwift. Its purpose is to explore Sendable snapshots, revision-checked transactions, generic main-actor Observation, explicit saves and conflict behavior.
 
 The prototype tests conditional inserts and updates, revision-checked deletes, batch rollback, conflict snapshots and explicit resolution, edits during a suspended save, overlapping saves, cancellation before SQLite work, and simulated unknown-commit outcomes. It prevents ID reuse in its experimental schema with a permanent registry and insert trigger. Commit recovery writes a marker in the same transaction and probes it through `resolveCommit`. Writers must preserve both the revision contract and the identity registry.
 

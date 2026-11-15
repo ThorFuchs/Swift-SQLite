@@ -1,0 +1,7 @@
+Swift-SQLite
+Copyright 2026 Thorsten Fuchs and the Swift-SQLite contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+On Linux it includes the SQLite amalgamation, which its authors dedicated to the
+public domain (https://sqlite.org/copyright.html). See THIRD_PARTY_NOTICES.md.

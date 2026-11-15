@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Local research spike; not a public API.
 import Foundation
 import Observation
