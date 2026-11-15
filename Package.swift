@@ -15,6 +15,7 @@ let amalgamationDefines: [CSetting] = [
     .define("SQLITE_ENABLE_API_ARMOR", .when(platforms: [.linux])),
     .define("SQLITE_MAX_EXPR_DEPTH", to: "1000", .when(platforms: [.linux])),
     .define("HAVE_USLEEP", to: "1", .when(platforms: [.linux])),
+    .define("SQLITE_ENABLE_FTS5", .when(platforms: [.linux])),
     .define("_GNU_SOURCE", .when(platforms: [.linux])),
 ]
 

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- Backups and maintenance: `backup(to:pagesPerStep:limits:progress:)` copies the
+  database from one read snapshot with `sqlite3_backup`, in steps that honor
+  deadlines and cancellation; `vacuum(into:limits:)` writes a compacted snapshot
+  without occupying the writer; `integrityCheck(maxProblems:limits:)` and
+  `quickCheck(maxProblems:limits:)` return a typed `SQLiteIntegrityReport`;
+  `optimize(limits:)` and `incrementalVacuum(pages:limits:)`. Destinations are never
+  overwritten, and a stopped or failed copy leaves no file.
+- FTS5 full-text search on Linux (the vendored engine is compiled with
+  `SQLITE_ENABLE_FTS5`), matching Apple's system SQLite.
+
 ### Changed
 
 - Developer kit 0.2.0: pinned to library 1.0.0 (tag, commit and tree in its

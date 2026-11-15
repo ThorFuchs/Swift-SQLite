@@ -211,6 +211,27 @@ do {
 ``SQLiteDatabase/writeReportingOutcome(limits:_:)`` returns the same three outcomes
 as a ``SQLiteCommitOutcome`` value instead of throwing.
 
+## Back up, check and maintain
+
+Backups run from one read snapshot, so writes continue meanwhile and the copy shows
+exactly the state at its start. The destination must not exist; a stopped or failed
+backup leaves no file behind.
+
+```swift
+try await database.backup(to: backupPath, limits: SQLiteOperationLimits(timeout: .seconds(60))) { step in
+    print("\(step.copiedPages) / \(step.totalPages) pages")
+}
+try await database.vacuum(into: compactCopyPath)  // a compacted snapshot without free pages
+
+let report = try await database.quickCheck()      // or integrityCheck() for the full check
+if !report.isIntact { alert(report.problems) }
+```
+
+Nothing runs in the background. Call maintenance when your service decides:
+``SQLiteDatabase/checkpoint(_:)``, ``SQLiteDatabase/optimize(limits:)`` (refreshes
+query-planner statistics; cheap) and, for files created with
+``SQLiteAutoVacuum/incremental``, ``SQLiteDatabase/incrementalVacuum(pages:limits:)``.
+
 ## Cancellation, busy and errors
 
 Every error is a ``SQLiteError``. Match on its ``SQLiteError/code``, with a `default`

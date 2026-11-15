@@ -71,6 +71,11 @@ pinned, unmodified SQLite amalgamation.
 - ``SQLiteIdentifier``
 - ``SQLiteTransactionOutcome``
 - ``SQLiteCommitOutcome``
+
+### Backups and maintenance
+
+- ``SQLiteBackupProgress``
+- ``SQLiteIntegrityReport``
 - ``SQLiteCheckpointMode``
 - ``SQLiteCheckpointResult``
 
