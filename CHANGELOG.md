@@ -1,39 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- `SQLiteError.Code.schemaMismatch` and `.invalidStoredValue` (with
-  `SQLiteError.column`), used by the model layer.
-- Model layer, gate G1 (internal target `SQLiteSwiftModels`, no product yet):
-  `SQLiteRecord`, `SQLiteRecordDescriptor` with typed `SQLiteColumn`s, strict
-  `SQLiteCodec`s (text, BLOB, integer, Int, Bool, REAL, decimal text, UUID as text or
-  BLOB, timestamp, Unix milliseconds, optional, raw-value enums),
-  `SQLiteRecordVersion` (revision and incarnation), `SQLiteRecordSnapshot`, and
-  `fetch`, `fetchAll` and `verifySchema` on transactions.
-- Model layer, gate G2: conditional `insert`, `update`, `save(_:expecting:)` and
-  `delete` on transactions, returning `SQLiteRecordWriteOutcome` (`inserted`,
-  `updated`, `deleted`, `conflict(current:)`, `missing`); revision plus incarnation
-  checks, so a reused key never matches an old version; and all-or-nothing batches
-  with `SQLiteDatabase.writeRecords(_:)`.
-- Model layer, gate G3 (internal target `SQLiteSwiftModelContext`, no product
-  yet): `@MainActor` `SQLiteModelContext` with one observable `SQLiteModel` handle
-  per record (`clean`, `dirty`, `saving`, `conflicted`, `deleted`,
-  `indeterminate`), atomic conditional `save()`, explicit `useRemote`, `keepLocal`
-  and `discard`, save markers with `resolveIndeterminate()`, and
-  `SQLiteModelSchema` (migration and marker pruning).
-- Model layer, gate G4: `SQLiteModelStore` with managed `writeRecords(_:origin:)`
-  and a committed-change stream: `subscribe(bufferSize:_:)` returns a snapshot and
-  an `SQLiteChangeSubscription` with a watermark handoff, bounded buffers that end
-  in `resyncRequired`, and cleanup on cancel and close. `SQLiteModelSchema` moved to
-  `SQLiteSwiftModels` and adds the sequence table; `SQLiteModelContext` is created
-  from a store.
-- Model layer, gate G5: `SQLiteModelContext.observeChanges()` keeps handles
-  current with other writers' saves (clean handles update, dirty ones keep their
-  draft and become conflicted, remote deletions are shown) and resyncs when asked;
-  `SQLiteLiveQuery` keeps a filtered, observable result list current per table.
-
 ## 0.9.0 — unreleased
 
 Release candidate for 1.0.0: the API is frozen, and the repository is ready for
@@ -48,6 +14,27 @@ public use.
 
 ### Added
 
+- Opt-in model layer, two new products (design and evidence:
+  `Documentation/MODEL-ARCHITECTURE.md`):
+  - `SQLiteSwiftModels`: `SQLiteRecord` with `SQLiteRecordDescriptor` and typed
+    `SQLiteColumn`s; strict `SQLiteCodec`s (text, BLOB, integer, Int, Bool, REAL,
+    decimal text, UUID as text or BLOB, timestamp, Unix milliseconds, optional,
+    raw-value enums); `SQLiteRecordSnapshot` with `SQLiteRecordVersion` (revision
+    plus a random incarnation, so a reused key never matches an old version);
+    `fetch`, `fetchAll` and `verifySchema`; conditional `insert`, `update`,
+    `save(_:expecting:)` and `delete` returning `SQLiteRecordWriteOutcome`
+    (`inserted`, `updated`, `deleted`, `conflict(current:)`, `missing`);
+    all-or-nothing batches (`SQLiteDatabase.writeRecords(_:)`); `SQLiteModelStore`
+    with a committed-change stream (snapshot handoff without gaps, bounded buffers
+    ending in `resyncRequired`); `SQLiteModelSchema` for the store's tables.
+  - `SQLiteSwiftModelContext`: main-actor `SQLiteModelContext` with one
+    `@Observable` `SQLiteModel` handle per record (`clean`, `dirty`, `saving`,
+    `conflicted`, `deleted`, `indeterminate`), atomic conditional `save()`, explicit
+    `useRemote`, `keepLocal` and `discard`, `resolveIndeterminate()` for unknown
+    commit outcomes, `observeChanges()` for live handles, and `SQLiteLiveQuery`.
+  - DocC catalogs and guides for both; `Scripts/build-docs.sh` builds every module.
+- `SQLiteError.Code.schemaMismatch` and `.invalidStoredValue` (with
+  `SQLiteError.column`), used by the model layer.
 - `SQLiteSynchronous.extra` (`PRAGMA synchronous=EXTRA`).
 - Community files: SECURITY.md (private vulnerability reporting), CONTRIBUTING.md,
   CODE_OF_CONDUCT.md, issue forms, a pull request template, CODEOWNERS.
@@ -55,7 +42,7 @@ public use.
   check against the latest release (`Scripts/check-api.sh`), a GitHub-hosted macOS
   job so pull requests from forks get macOS coverage, and Dependabot for GitHub
   Actions.
-- `.spi.yml` for the Swift Package Index (documentation for both products).
+- `.spi.yml` for the Swift Package Index (documentation for every product).
 - README for public use, with the versioning policy.
 
 ### Fixed

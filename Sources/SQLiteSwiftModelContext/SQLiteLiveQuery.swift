@@ -15,7 +15,7 @@ import SQLiteSwiftModels
 /// The query reads its results when it starts and again after every batch the
 /// store commits to its table. Results are snapshots in key order and are never
 /// truncated: more rows than the query's limit stop it with
-/// ``SQLiteSwift/SQLiteError/Code/rowLimitExceeded``.
+/// `SQLiteError.Code.rowLimitExceeded`.
 @MainActor @Observable
 public final class SQLiteLiveQuery<Record: SQLiteRecord> {
     /// The matching records, in key order.
@@ -32,8 +32,10 @@ public final class SQLiteLiveQuery<Record: SQLiteRecord> {
     @ObservationIgnored private var progressWaiters: [(condition: () -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
 
     /// - Parameters:
+    ///   - type: The record type.
     ///   - filter: Which rows to include; `nil` for all.
     ///   - limits: Row and byte limits for each read.
+    ///   - store: The store whose committed changes trigger a new read.
     public init(
         _ type: Record.Type, where filter: SQLitePredicate? = nil, limits: SQLiteQueryLimits? = nil,
         store: SQLiteModelStore

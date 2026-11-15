@@ -5,7 +5,7 @@ import SQLiteSwift
 
 /// The tables the model store and the editing context own.
 ///
-/// Add ``migration(version:)`` to your own numbered migration list, so your
+/// Add ``migration(version:name:)`` to your own numbered migration list, so your
 /// `user_version` stays the single schema version of the file:
 ///
 /// ```swift

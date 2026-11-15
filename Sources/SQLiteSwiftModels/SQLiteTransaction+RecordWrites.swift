@@ -21,7 +21,7 @@ extension SQLiteTransaction {
     ///   ``SQLiteRecordWriteOutcome/conflict(current:)`` if the row has another version
     ///   (also when it was deleted and inserted again under the same key), or
     ///   ``SQLiteRecordWriteOutcome/missing`` if no row has the key.
-    /// - Throws: ``SQLiteError/Code/invalidArgument`` if the revision is already
+    /// - Throws: `SQLiteError.Code.invalidArgument` if the revision is already
     ///   `Int64.max`; it is never wrapped.
     public func update<Record: SQLiteRecord>(
         _ record: Record, expecting expected: SQLiteRecordVersion

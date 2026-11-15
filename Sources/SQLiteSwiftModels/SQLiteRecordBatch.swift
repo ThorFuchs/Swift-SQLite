@@ -6,7 +6,7 @@ import SQLiteSwift
 ///
 /// Build it with ``insert(_:)``, ``update(_:expecting:)``, ``save(_:expecting:)`` or
 /// ``delete(_:id:expecting:)`` and pass a list of them to
-/// ``SQLiteSwift/SQLiteDatabase/writeRecords(_:limits:)``.
+/// `SQLiteDatabase.writeRecords(_:limits:)`.
 public struct SQLiteRecordWrite: Sendable {
     /// The table the write goes to.
     public let table: String
@@ -148,7 +148,7 @@ extension SQLiteDatabase {
     /// - Parameters:
     ///   - writes: The writes, in the order they run.
     ///   - limits: Time and instruction bounds for the transaction. `nil` uses
-    ///     ``SQLiteConfiguration/operationLimits``.
+    ///     `SQLiteConfiguration.operationLimits`.
     @discardableResult
     public func writeRecords(
         _ writes: [SQLiteRecordWrite], limits: SQLiteOperationLimits? = nil

@@ -24,6 +24,9 @@ let package = Package(
     products: [
         .library(name: "SQLiteSwift", targets: ["SQLiteSwift"]),
         .library(name: "SQLiteSwiftTesting", targets: ["SQLiteSwiftTesting"]),
+        // Opt-in model layer (see Documentation/MODEL-ARCHITECTURE.md).
+        .library(name: "SQLiteSwiftModels", targets: ["SQLiteSwiftModels"]),
+        .library(name: "SQLiteSwiftModelContext", targets: ["SQLiteSwiftModelContext"]),
     ],
     targets: [
         // Pinned, unmodified SQLite amalgamation. `shim.c` compiles it on Linux only;
@@ -50,8 +53,8 @@ let package = Package(
             dependencies: ["SQLiteSwift"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
-        // Opt-in model layer (see Documentation/MODEL-ARCHITECTURE.md). No product yet:
-        // it ships as a product once its gates pass, so its API can still change.
+        // Opt-in model layer: records, conditional writes and the change stream
+        // (server-safe), and the main-actor editing context on top of it.
         .target(
             name: "SQLiteSwiftModels",
             dependencies: ["SQLiteSwift"],

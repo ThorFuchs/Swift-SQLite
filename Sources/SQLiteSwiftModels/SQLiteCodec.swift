@@ -7,7 +7,7 @@ import SQLiteSwift
 ///
 /// Codecs are strict: decoding never repairs or guesses. NULL in a non-optional
 /// column, a wrong storage class, invalid UTF-8, an out-of-range integer or an
-/// unparsable value throws ``SQLiteError/Code/invalidStoredValue`` naming the column.
+/// unparsable value throws `SQLiteError.Code.invalidStoredValue` naming the column.
 /// Wrap a codec in ``optional(_:)`` to map SQL NULL to `nil`.
 public struct SQLiteCodec<Value>: Sendable {
     /// A short description of the stored form, for example `TEXT (UTF-8)`.

@@ -62,7 +62,7 @@ From 1.0.0 on, use `from: "1.0.0"`.
 
 | | |
 | --- | --- |
-| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers) |
+| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers); opt-in model layer: `SQLiteSwiftModels` and `SQLiteSwiftModelContext` |
 | **Platforms** | macOS 15+, iOS 18+, Linux (x86_64 and arm64) |
 | **Toolchain** | Swift 6.4, Swift 6 language mode, strict concurrency, typed throws |
 | **SQLite** | The system SQLite on Apple platforms; a pinned, unmodified SQLite 3.54.1 amalgamation on Linux ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)) |
@@ -86,13 +86,43 @@ From 1.0.0 on, use `from: "1.0.0"`.
 | Errors | `SQLiteError` carries a `code` that can grow without breaking your `switch`, plus typed detail. Catch by code: `catch SQLiteError.Code.busy`. |
 | iOS | Optional data-protection class for the database files. |
 
+## Model layer (opt-in)
+
+Two optional products build typed records on the core. They add no dependencies;
+the core does not import them.
+
+- **`SQLiteSwiftModels`** (servers and apps): records described with typed columns
+  and strict codecs, immutable snapshots with a version (revision plus a random
+  incarnation, so a reused key never matches an old version), writes that state
+  what they expect (`insert`, `update(_:expecting:)`, `delete(_:id:expecting:)`)
+  and return `inserted`, `updated`, `deleted`, `conflict(current:)` or `missing`,
+  all-or-nothing batches, and `SQLiteModelStore` with a committed-change stream
+  (snapshot handoff without gaps, bounded buffers, `resyncRequired`).
+- **`SQLiteSwiftModelContext`** (apps): a main-actor `SQLiteModelContext` with one
+  `@Observable` handle per record, atomic conditional `save()`, explicit conflict
+  resolution, truthful handling of unknown commit outcomes, live handles and
+  `SQLiteLiveQuery`.
+
+```swift
+let store = SQLiteModelStore(database: database)
+let context = SQLiteModelContext(store: store)
+if let article = try await context.find(Article.self, id: "intro") {
+    article.value.title = "A better title"
+    try await context.save()  // .saved, or .conflict if someone saved first
+}
+```
+
+Design and evidence: [MODEL-ARCHITECTURE](Documentation/MODEL-ARCHITECTURE.md).
+Guides: [Defining records](Sources/SQLiteSwiftModels/SQLiteSwiftModels.docc/DefiningRecords.md),
+[Editing with a context](Sources/SQLiteSwiftModelContext/SQLiteSwiftModelContext.docc/EditingWithAContext.md).
+
 ## Documentation
 
 - [Getting Started](Sources/SQLiteSwift/SQLiteSwift.docc/GettingStarted.md):
   migrations, reads and writes, compare-and-set, pagination, limits, commit
   outcomes and errors.
-- API reference: every public symbol is documented in DocC. Build it with
-  `Scripts/build-docs.sh`.
+- API reference: every public symbol is documented in DocC. Build the archives
+  for all three modules with `Scripts/build-docs.sh`.
 - [CHANGELOG](CHANGELOG.md), including how to migrate between versions.
 - [Roadmap](ROADMAP.md): the opt-in profiles planned after 1.0.0 (rollback store,
   read-only sources and images, confinement, one isolated engine on every platform).
