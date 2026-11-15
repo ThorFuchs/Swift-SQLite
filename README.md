@@ -108,6 +108,7 @@ targets: [
 | Bounded reads | Row limits and byte budgets on every query (1 MiB default, 16 MiB hard cap, also enforced as `SQLITE_LIMIT_LENGTH`), `length()` checks before loading BLOBs, and a bounded statement cache. Results are never silently truncated. |
 | Byte-exact values | `queryRaw` and `executeRaw` keep TEXT as its stored bytes, including invalid UTF-8 and NUL. |
 | Helpers | Compare-and-set with typed guards, keyset pagination, typed predicates with bound values, quoted identifiers, expiry queries on an injectable clock. |
+| Observability | An optional `SQLiteObserver` sees every operation's kind, connection wait, duration and outcome, on the calling task, for metrics, tracing and logs. |
 | Errors | `SQLiteError` carries a `code` that can grow without breaking your `switch`, plus typed detail. Catch by code: `catch SQLiteError.Code.busy`. |
 | iOS | Optional data-protection class for the database files. |
 

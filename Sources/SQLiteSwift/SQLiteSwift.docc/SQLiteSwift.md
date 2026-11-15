@@ -79,6 +79,12 @@ pinned, unmodified SQLite amalgamation.
 - ``SQLiteCheckpointMode``
 - ``SQLiteCheckpointResult``
 
+### Observation
+
+- ``SQLiteObserver``
+- ``SQLiteOperation``
+- ``SQLiteOperationReport``
+
 ### Time
 
 - ``SQLiteClock``
