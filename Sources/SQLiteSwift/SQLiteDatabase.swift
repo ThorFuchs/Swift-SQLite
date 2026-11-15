@@ -170,29 +170,34 @@ public final class SQLiteDatabase: Sendable {
         limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteTransactionOutcome<T>
     ) async throws(SQLiteError) -> T {
-        let token = try makeToken(limits)
-        let slot = try await writerPool.acquire(deadline: token.deadline)
-        defer { writerPool.release(slot) }
-        return try await writer.run(token: token) { (core) throws(SQLiteError) -> T in
-            try core.execInternal("BEGIN IMMEDIATE")
-            let transaction = SQLiteTransaction(core: core, kind: .write)
-            do throws(SQLiteError) {
-                let outcome = try body(transaction)
-                transaction.invalidate()
-                switch outcome {
-                case .commit(let value):
-                    try core.checkStop()
-                    try core.commitTransaction()
-                    return value
-                case .rollback(let value):
-                    try core.execFinishing("ROLLBACK")
-                    return value
+        try await observed(.write) { (measure) async throws(SQLiteError) -> T in
+            let token = try makeToken(limits)
+            let slot = try await writerPool.acquire(deadline: token.deadline)
+            defer { writerPool.release(slot) }
+            measure.acquired = .now
+            let (value, rolledBack) = try await writer.run(token: token) { (core) throws(SQLiteError) -> (T, Bool) in
+                try core.execInternal("BEGIN IMMEDIATE")
+                let transaction = SQLiteTransaction(core: core, kind: .write)
+                do throws(SQLiteError) {
+                    let outcome = try body(transaction)
+                    transaction.invalidate()
+                    switch outcome {
+                    case .commit(let value):
+                        try core.checkStop()
+                        try core.commitTransaction()
+                        return (value, false)
+                    case .rollback(let value):
+                        try core.execFinishing("ROLLBACK")
+                        return (value, true)
+                    }
+                } catch {
+                    transaction.invalidate()
+                    core.rollbackIfNeeded()
+                    throw error
                 }
-            } catch {
-                transaction.invalidate()
-                core.rollbackIfNeeded()
-                throw error
             }
+            measure.rolledBack = rolledBack
+            return value
         }
     }
 
@@ -210,10 +215,20 @@ public final class SQLiteDatabase: Sendable {
         limits: SQLiteOperationLimits? = nil,
         _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
+        try await observed(.read) { (measure) async throws(SQLiteError) -> T in
+            try await readUnobserved(limits: limits, measure: &measure, body)
+        }
+    }
+
+    func readUnobserved<T: Sendable>(
+        limits: SQLiteOperationLimits?, measure: inout SQLiteMeasure,
+        _ body: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> T
+    ) async throws(SQLiteError) -> T {
         let token = try makeToken(limits)
         let (pool, connections) = readerPool.map { ($0, readers) } ?? (writerPool, [writer])
         let slot = try await pool.acquire(deadline: token.deadline)
         defer { pool.release(slot) }
+        measure.acquired = .now
         return try await connections[slot].run(token: token) { (core) throws(SQLiteError) -> T in
             try core.execInternal("BEGIN DEFERRED")
             let transaction = SQLiteTransaction(core: core, kind: .read)
@@ -247,8 +262,10 @@ public final class SQLiteDatabase: Sendable {
     /// wait up to the busy timeout and then throw ``SQLiteError/Code/busy``.
     @discardableResult
     public func checkpoint(_ mode: SQLiteCheckpointMode = .passive) async throws(SQLiteError) -> SQLiteCheckpointResult {
+        try await observed(.checkpoint) { (measure) async throws(SQLiteError) -> SQLiteCheckpointResult in
         let slot = try await writerPool.acquire()
         defer { writerPool.release(slot) }
+        measure.acquired = .now
         return try await writer.run { (core) throws(SQLiteError) -> SQLiteCheckpointResult in
             let db = try core.handle()
             var log: Int32 = 0
@@ -256,6 +273,7 @@ public final class SQLiteDatabase: Sendable {
             let rc = sqlite3_wal_checkpoint_v2(db, nil, mode.rawValue, &log, &checkpointed)
             guard rc == SQLITE_OK else { throw core.error(rc) }
             return SQLiteCheckpointResult(walFrames: Int(log), checkpointedFrames: Int(checkpointed))
+        }
         }
     }
 

@@ -232,6 +232,25 @@ Nothing runs in the background. Call maintenance when your service decides:
 query-planner statistics; cheap) and, for files created with
 ``SQLiteAutoVacuum/incremental``, ``SQLiteDatabase/incrementalVacuum(pages:limits:)``.
 
+## Observe operations
+
+Give the configuration an ``SQLiteObserver`` to feed metrics, traces or logs. It sees
+every operation (reads, writes, commit resolution, backups and maintenance) with
+its kind, the wait for a connection, the duration and the outcome. Both callbacks
+run on the calling task, so task-local context such as a tracing context is
+available:
+
+```swift
+struct SlowOperations: SQLiteObserver {
+    func operationDidFinish(_ report: SQLiteOperationReport, context: Void) {
+        if report.duration > .milliseconds(100) {
+            print("slow \(report.operation.kind): \(report.duration), waited \(report.connectionWait)")
+        }
+    }
+}
+configuration.observer = SlowOperations()
+```
+
 ## Cancellation, busy and errors
 
 Every error is a ``SQLiteError``. Match on its ``SQLiteError/code``, with a `default`
@@ -262,6 +281,16 @@ do throws(SQLiteError) {
 - On Apple platforms, writes are synced with `F_FULLFSYNC` by default
   (``SQLiteConfiguration/appleFullFSync``). ``SQLiteDatabase/effectiveSettings()``
   reports the settings in force.
+
+## Test failure handling
+
+`SQLiteSwiftTesting` can make a real failure happen, so your store's handling of it
+is tested, not assumed:
+
+```swift
+try await database.injectFault(.commitOutcomeUnknown)
+// The next committing write throws commitOutcomeUnknown; resolveCommit finds nothing.
+```
 
 ## Test your store with the conformance kit
 

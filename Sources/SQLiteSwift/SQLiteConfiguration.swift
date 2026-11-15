@@ -201,6 +201,9 @@ public struct SQLiteConfiguration: Sendable {
     /// `auto_vacuum`), written to new files and checked on existing ones. Default
     /// `nil` (no check).
     public var fileIdentity: SQLiteFileIdentity?
+    /// Watches every operation, for metrics, tracing and logs (see
+    /// ``SQLiteObserver``). Default `nil`.
+    public var observer: (any SQLiteObserver)?
 
     /// A file database with the defaults described on ``SQLiteConfiguration``.
     public init(path: String) {
@@ -216,6 +219,15 @@ public struct SQLiteConfiguration: Sendable {
         self.clock = SQLiteSystemClock()
         self.operationLimits = .unlimited
         self.fileIdentity = nil
+        self.observer = nil
+    }
+
+    /// The file path, or `":memory:"`.
+    var path: String {
+        switch storage {
+        case .file(let path): path
+        case .inMemory: ":memory:"
+        }
     }
 
     /// A file database that uses one connection for reads and writes.

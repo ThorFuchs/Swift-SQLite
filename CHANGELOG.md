@@ -11,6 +11,15 @@
   `quickCheck(maxProblems:limits:)` return a typed `SQLiteIntegrityReport`;
   `optimize(limits:)` and `incrementalVacuum(pages:limits:)`. Destinations are never
   overwritten, and a stopped or failed copy leaves no file.
+- Observation hooks: `SQLiteConfiguration.observer` takes an `SQLiteObserver`
+  that sees every operation (`SQLiteOperation.Kind`: read, write, resolve_commit,
+  checkpoint, backup, vacuum_into, integrity and quick checks, optimize,
+  incremental vacuum) with the wait for a connection, the duration and the outcome
+  (succeeded, rolled back, failed). Both callbacks run on the calling task, so
+  task-local context (tracing, logging) is available. No observer, no cost.
+- Fault injection for consumers: `SQLiteSwiftTesting` adds
+  `SQLiteDatabase.injectFault(_:)` with `SQLiteFault.commitOutcomeUnknown`, so a
+  store can test its handling of an unknown commit with a real failing `COMMIT`.
 - FTS5 full-text search on Linux (the vendored engine is compiled with
   `SQLITE_ENABLE_FTS5`), matching Apple's system SQLite.
 

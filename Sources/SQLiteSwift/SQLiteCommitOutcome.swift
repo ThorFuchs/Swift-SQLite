@@ -84,8 +84,17 @@ extension SQLiteDatabase {
         limits: SQLiteOperationLimits? = nil,
         _ probe: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> Bool
     ) async throws(SQLiteError) -> Bool {
+        try await observed(.resolveCommit) { (measure) async throws(SQLiteError) -> Bool in
+            try await resolveCommitUnobserved(limits: limits, &measure, probe)
+        }
+    }
+
+    private func resolveCommitUnobserved(
+        limits: SQLiteOperationLimits?, _ measure: inout SQLiteMeasure,
+        _ probe: @escaping @Sendable (SQLiteTransaction) throws(SQLiteError) -> Bool
+    ) async throws(SQLiteError) -> Bool {
         guard case .file = configuration.storage else {
-            return try await read(limits: limits, probe)
+            return try await readUnobserved(limits: limits, measure: &measure, probe)
         }
         guard !isClosing else { throw .closed }
         let limits = limits ?? configuration.operationLimits
@@ -94,6 +103,7 @@ extension SQLiteDatabase {
             deadline: limits.timeout.map { ContinuousClock.now + $0 },
             maxInstructions: limits.maxInstructions)
         let connection = try SQLiteConnection(role: .probe, configuration: configuration)
+        measure.acquired = .now
         do throws(SQLiteError) {
             let found = try await connection.run(token: token) { (core) throws(SQLiteError) -> Bool in
                 try core.open()

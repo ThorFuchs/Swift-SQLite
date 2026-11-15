@@ -68,7 +68,8 @@ extension SQLiteDatabase {
     ) async throws(SQLiteError) -> SQLiteBackupProgress {
         guard pagesPerStep >= 1 else { throw .invalidArgument("pagesPerStep must be at least 1") }
         try Self.requireNewFile(path)
-        return try await onReader(limits) { (core) throws(SQLiteError) -> SQLiteBackupProgress in
+        return try await observed(.backup) { (measure) async throws(SQLiteError) -> SQLiteBackupProgress in
+        try await onReader(limits, &measure) { (core) throws(SQLiteError) -> SQLiteBackupProgress in
             try core.execInternal("BEGIN DEFERRED")
             do throws(SQLiteError) {
                 // Start the read snapshot before the copy, so every step sees it.
@@ -84,6 +85,7 @@ extension SQLiteDatabase {
                 throw error
             }
         }
+        }
     }
 
     /// Writes a compacted copy of the database to a new file with `VACUUM INTO`.
@@ -98,6 +100,14 @@ extension SQLiteDatabase {
     ///     ``SQLiteConfiguration/operationLimits``.
     public func vacuum(into path: String, limits: SQLiteOperationLimits? = nil) async throws(SQLiteError) {
         try Self.requireNewFile(path)
+        try await observed(.vacuumInto) { (measure) async throws(SQLiteError) in
+            try await vacuumUnobserved(into: path, limits: limits, &measure)
+        }
+    }
+
+    private func vacuumUnobserved(
+        into path: String, limits: SQLiteOperationLimits?, _ measure: inout SQLiteMeasure
+    ) async throws(SQLiteError) {
         let body: @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> Void = { (core) throws(SQLiteError) in
             do throws(SQLiteError) {
                 // VACUUM INTO attaches the target and runs its own transaction:
@@ -119,7 +129,7 @@ extension SQLiteDatabase {
             // An in-memory connection would attach the target in memory too (SQLite
             // carries SQLITE_OPEN_MEMORY over), so nothing would reach the disk. Copy
             // the pages with the backup API instead, then compact the copy.
-            try await onWriter(limits) { (core) throws(SQLiteError) in
+            try await onWriter(limits, &measure) { (core) throws(SQLiteError) in
                 do throws(SQLiteError) {
                     _ = try Self.copyPages(from: core, to: path, pagesPerStep: 1024, compact: true, progress: nil)
                 } catch {
@@ -135,6 +145,7 @@ extension SQLiteDatabase {
         guard !isClosing else { throw .closed }
         let token = try makeToken(limits)
         let connection = try SQLiteConnection(role: .maintenance, configuration: configuration)
+        measure.acquired = .now
         do throws(SQLiteError) {
             try await connection.run(token: token) { (core) throws(SQLiteError) in
                 try core.open()
@@ -161,7 +172,7 @@ extension SQLiteDatabase {
     public func integrityCheck(
         maxProblems: Int = 100, limits: SQLiteOperationLimits? = nil
     ) async throws(SQLiteError) -> SQLiteIntegrityReport {
-        try await check("integrity_check", maxProblems: maxProblems, limits: limits)
+        try await check("integrity_check", .integrityCheck, maxProblems: maxProblems, limits: limits)
     }
 
     /// Runs `PRAGMA quick_check`: like ``integrityCheck(maxProblems:limits:)`` but
@@ -174,16 +185,18 @@ extension SQLiteDatabase {
     public func quickCheck(
         maxProblems: Int = 100, limits: SQLiteOperationLimits? = nil
     ) async throws(SQLiteError) -> SQLiteIntegrityReport {
-        try await check("quick_check", maxProblems: maxProblems, limits: limits)
+        try await check("quick_check", .quickCheck, maxProblems: maxProblems, limits: limits)
     }
 
     private func check(
-        _ pragma: String, maxProblems: Int, limits: SQLiteOperationLimits?
+        _ pragma: String, _ kind: SQLiteOperation.Kind, maxProblems: Int, limits: SQLiteOperationLimits?
     ) async throws(SQLiteError) -> SQLiteIntegrityReport {
         guard maxProblems >= 1 else { throw .invalidArgument("maxProblems must be at least 1") }
-        return try await read(limits: limits) { (tx) throws(SQLiteError) -> SQLiteIntegrityReport in
-            let rows = try tx.core.integrityRows("PRAGMA \(pragma)(\(maxProblems))")
-            return SQLiteIntegrityReport(problems: rows == ["ok"] ? [] : rows)
+        return try await observed(kind) { (measure) async throws(SQLiteError) -> SQLiteIntegrityReport in
+            try await readUnobserved(limits: limits, measure: &measure) { (tx) throws(SQLiteError) -> SQLiteIntegrityReport in
+                let rows = try tx.core.integrityRows("PRAGMA \(pragma)(\(maxProblems))")
+                return SQLiteIntegrityReport(problems: rows == ["ok"] ? [] : rows)
+            }
         }
     }
 
@@ -196,7 +209,9 @@ extension SQLiteDatabase {
     /// - Parameter limits: Time and instruction bounds. `nil` uses
     ///   ``SQLiteConfiguration/operationLimits``.
     public func optimize(limits: SQLiteOperationLimits? = nil) async throws(SQLiteError) {
-        try await onWriter(limits) { (core) throws(SQLiteError) in try core.execInternal("PRAGMA optimize") }
+        try await observed(.optimize) { (measure) async throws(SQLiteError) in
+            try await onWriter(limits, &measure) { (core) throws(SQLiteError) in try core.execInternal("PRAGMA optimize") }
+        }
     }
 
     /// Returns up to `pages` free pages to the file system (`PRAGMA
@@ -210,29 +225,33 @@ extension SQLiteDatabase {
     public func incrementalVacuum(pages: Int? = nil, limits: SQLiteOperationLimits? = nil) async throws(SQLiteError) {
         if let pages, pages < 1 { throw .invalidArgument("pages must be at least 1") }
         let sql = "PRAGMA incremental_vacuum(\(pages ?? 0))"
-        try await onWriter(limits) { (core) throws(SQLiteError) in try core.execInternal(sql) }
+        try await observed(.incrementalVacuum) { (measure) async throws(SQLiteError) in
+            try await onWriter(limits, &measure) { (core) throws(SQLiteError) in try core.execInternal(sql) }
+        }
     }
 
     // MARK: Plumbing
 
     private func onReader<T: Sendable>(
-        _ limits: SQLiteOperationLimits?,
+        _ limits: SQLiteOperationLimits?, _ measure: inout SQLiteMeasure,
         _ body: @escaping @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
         let token = try makeToken(limits)
         let (pool, connections) = readerPool.map { ($0, readers) } ?? (writerPool, [writer])
         let slot = try await pool.acquire(deadline: token.deadline)
         defer { pool.release(slot) }
+        measure.acquired = .now
         return try await connections[slot].run(token: token, body)
     }
 
     private func onWriter<T: Sendable>(
-        _ limits: SQLiteOperationLimits?,
+        _ limits: SQLiteOperationLimits?, _ measure: inout SQLiteMeasure,
         _ body: @escaping @Sendable (SQLiteConnectionCore) throws(SQLiteError) -> T
     ) async throws(SQLiteError) -> T {
         let token = try makeToken(limits)
         let slot = try await writerPool.acquire(deadline: token.deadline)
         defer { writerPool.release(slot) }
+        measure.acquired = .now
         return try await writer.run(token: token, body)
     }
 
