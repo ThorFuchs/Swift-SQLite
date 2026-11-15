@@ -44,7 +44,12 @@ let migrations = [
 ]
 ```
 
-Never edit or remove a migration after it shipped; add a new one.
+Never edit or remove a migration after it shipped; add a new one. To enforce that,
+turn on ``SQLiteConfiguration/verifiesMigrationChecksums``: every applied migration's
+checksum is recorded, and an edited one stops the next open with
+``SQLiteError/Code/migrationModified`` before any new migration runs. A SQL
+migration's checksum covers its SQL text; a closure migration's only its version and
+name.
 
 ## Open the database
 

@@ -133,7 +133,8 @@ Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
 
 ### 1.1.0: operate it on a server
 
-The core is complete for storing data; this release makes it operable.
+The core is complete for storing data; this release makes it operable. Status: all
+eight items are built (PRs #26–#29); the shape of items 4 and 5 is noted below.
 
 1. **Backups.** `database.backup(to:)` over `sqlite3_backup`, in steps, with progress,
    cancellation and an operation deadline; `VACUUM INTO` for a compact snapshot.
@@ -145,10 +146,13 @@ The core is complete for storing data; this release makes it operable.
    the wait for a connection and for locks, checkpoints and limit stops. Bridges to
    swift-log, swift-metrics, swift-distributed-tracing and swift-service-lifecycle
    (`Service` with graceful `close()`) come as package traits (SE-0450) or a small
-   companion package, so the core keeps zero dependencies.
+   companion package, so the core keeps zero dependencies. Built as operation-level
+   hooks (`SQLiteObserver`, called on the calling task) and the `SQLiteSwiftServer`
+   module behind four traits; per-statement timing was left out as too costly.
 5. **Fault injection for consumers.** The tests here inject unknown commits, busy
    locks and a full disk through internal hooks. `SQLiteSwiftTesting` makes them
-   public, so consumers can test their own handling of these outcomes.
+   public, so consumers can test their own handling of these outcomes. Built:
+   `injectFault(.commitOutcomeUnknown)`; `SQLiteFault` is extensible for more.
 6. **Migration checksums.** A store table records each applied migration's hash; an
    edited shipped migration fails at open with a typed error instead of being a rule
    in the documentation.
