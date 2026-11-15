@@ -24,8 +24,8 @@ connections, transactions, migrations and the hard edges.
   tests.
 - **Developer kit** for coding agents: a `swift-sqlite` skill with compiled recipes.
 
-> **Status:** 0.9.0 is the release candidate for 1.0.0. The API is frozen; 1.0.0
-> follows once downstream validation finishes.
+> **Status:** 1.0.0 is stable. From here on, only a major release may break source
+> compatibility.
 
 ```swift
 import SQLiteSwift
@@ -72,7 +72,7 @@ Add the package to `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", .upToNextMinor(from: "0.9.0")),
+    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.0.0"),
 ],
 targets: [
     .target(name: "MyStore", dependencies: [
@@ -84,8 +84,6 @@ targets: [
     ]),
 ]
 ```
-
-From 1.0.0 on, use `from: "1.0.0"`.
 
 | | |
 | --- | --- |
@@ -194,8 +192,8 @@ that has a `default` branch. Enums whose documentation says "the cases are compl
 never gain cases. CI checks every pull request for API breakage against the latest
 release.
 
-Before 1.0.0, a minor release (0.x) may break the API; pin with
-`.upToNextMinor(from:)`.
+Releases before 1.0.0 could break the API in a minor release; see the
+[CHANGELOG](CHANGELOG.md) for upgrading from 0.x.
 
 ## Development
 

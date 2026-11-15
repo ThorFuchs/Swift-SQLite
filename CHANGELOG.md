@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — 2026-11-15
+
+The first stable release. The public API is the one frozen in 0.9.0, unchanged:
+from now on, only a major release may break source compatibility. 0.9.0 was
+validated downstream by Swift-MCP-Server-Core (build, its task-store tests and the
+conformance kit, also under ThreadSanitizer) with nothing changed but its version
+pin.
+
+Upgrading from 0.9.0: change the requirement to `from: "1.0.0"`; no code changes.
 
 ### Documentation
 
