@@ -10,6 +10,10 @@
 
 ### Added
 
+- A dependency-free benchmark package (`Benchmarks/`, `Scripts/run-benchmarks.sh`)
+  and a recorded baseline for 1.0.0 (`Documentation/Benchmarks.md`).
+- CI: the GitHub-hosted macOS job also runs the tests with the Swift 6.2 upcoming
+  feature `NonisolatedNonsendingByDefault` (SE-0461); all tests pass with it.
 - Developer kit 0.1.0 for coding agents, pinned to library 0.9.0: an
   instruction-only `swift-sqlite` skill (Claude Code plugin marketplace and the
   portable Agent Plugins format) with references and 13 recipes compiled and run

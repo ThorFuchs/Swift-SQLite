@@ -1,0 +1,50 @@
+[
+  {
+    "maxMilliseconds" : 720.417,
+    "medianMilliseconds" : 251.452417,
+    "minMilliseconds" : 227.179375,
+    "name" : "write: 500 single-row transactions",
+    "operations" : 500,
+    "operationsPerSecond" : 1988
+  },
+  {
+    "maxMilliseconds" : 97.909875,
+    "medianMilliseconds" : 90.107375,
+    "minMilliseconds" : 85.473458,
+    "name" : "write: 50,000 rows in one transaction",
+    "operations" : 50000,
+    "operationsPerSecond" : 554894
+  },
+  {
+    "maxMilliseconds" : 230.231542,
+    "medianMilliseconds" : 223.736458,
+    "minMilliseconds" : 217.135667,
+    "name" : "read: 20,000 point reads, 8 tasks",
+    "operations" : 20000,
+    "operationsPerSecond" : 89391
+  },
+  {
+    "maxMilliseconds" : 4.163209,
+    "medianMilliseconds" : 3.813625,
+    "minMilliseconds" : 3.611166,
+    "name" : "read: keyset scan of 10,000 rows",
+    "operations" : 10000,
+    "operationsPerSecond" : 2622177
+  },
+  {
+    "maxMilliseconds" : 160.681791,
+    "medianMilliseconds" : 157.75075,
+    "minMilliseconds" : 154.569334,
+    "name" : "write: 500 compare-and-set updates",
+    "operations" : 500,
+    "operationsPerSecond" : 3170
+  },
+  {
+    "maxMilliseconds" : 118.219875,
+    "medianMilliseconds" : 116.008917,
+    "minMilliseconds" : 113.188625,
+    "name" : "model: 200 batches of 10 inserts",
+    "operations" : 2000,
+    "operationsPerSecond" : 17240
+  }
+]

@@ -127,11 +127,9 @@ Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
   (statically confirmed; the build waits for disk space on the maintainer's Mac).
 - Re-pin the developer kit to 1.0.0 and run its recipes against the tag.
 - List the package on the Swift Package Index (hosted DocC, badges).
-- Build and test once with the Swift 6.2 upcoming feature
-  `NonisolatedNonsendingByDefault` (SE-0461), so 1.0.0 behaves the same when
-  consumers turn it on.
-- Record a first benchmark baseline (writes, reads, pool contention), so later
-  performance claims have a reference.
+- Done: build and test with the Swift 6.2 upcoming feature
+  `NonisolatedNonsendingByDefault` (SE-0461); all tests pass, and CI keeps checking it.
+- Done: a first benchmark baseline ([Documentation/Benchmarks.md](Documentation/Benchmarks.md)).
 
 ### 1.1.0: operate it on a server
 
