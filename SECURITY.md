@@ -7,7 +7,7 @@
 | Latest minor release of the current major version | Yes |
 | Older releases | No; please upgrade |
 
-Before 1.0.0, only the latest 0.x release is supported.
+Releases before 1.0.0 are no longer supported; please upgrade to 1.x.
 
 ## Reporting a vulnerability
 

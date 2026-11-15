@@ -1,7 +1,7 @@
 # Swift-SQLite roadmap
 
-Status: updated 15 November 2026. 0.9.0 (API freeze, model layer, public polish)
-is released as the 1.0.0 candidate. After 1.0.0 the plan is: **1.1.0** makes the
+Status: updated 15 November 2026. **1.0.0 is released** (stable API, model layer,
+public polish). Next: **1.1.0** makes the
 package operable on a server (backups, maintenance, instrumentation, fault
 injection), **1.2.0** brings the model layer to servers (async live queries, a
 resumable change stream), and the opt-in profiles follow by consumer demand.
@@ -65,7 +65,7 @@ force a break lands first.
 | 0.2.0 | Commit outcomes, operation limits, raw rows, file identity, extended settings; `SQLiteError` and `SQLiteConformanceKit.Check` become extensible structs | released (tag `0.2.0`) |
 | 0.9.0 | API review and freeze; community files (SECURITY, CONTRIBUTING, code of conduct, issue and PR templates); CI gates (Thread and Address Sanitizer, API-breakage check against the last tag, release build, Dependabot for actions); hosted DocC; Swift Package Index (`.spi.yml`); public README; SemVer policy; branch protection (enabled 2026-11-15); macOS CI for fork PRs on GitHub-hosted runners if available | released (tag `0.9.0`, release candidate) |
 | 0.9.0 (model layer) | Opt-in model layer (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`) joins the release candidate and its API freeze: record snapshots, conditional writes, a committed-change stream and observable editing handles. Decisions and gates: [MODEL-ARCHITECTURE.md](Documentation/MODEL-ARCHITECTURE.md) | released in `0.9.0` |
-| 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | next |
+| 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | released (tag `1.0.0`); Core validated 0.9.0 green with only its pin changed |
 | 1.1.0 | Operate it on a server: online backup, `VACUUM INTO`, integrity checks, explicit maintenance, dependency-free instrumentation hooks, public fault injection, migration checksums, FTS5 on Linux | planned |
 | 1.2.0 | The model layer on the server: an async live query without the main actor, a resumable change stream, `Observations` support, records from custom SQL, an opt-in Swift-JSON codec | planned |
 | 1.3.0+ | Opt-in profiles (rollback store, read-only source and image, confinement, lock file), scheduled when a consumer needs them | by demand |
@@ -123,8 +123,8 @@ Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
 
 ### 1.0.0: finish the release
 
-- MCP-Server-Core builds and tests on 0.9.0 with only its version pin changed
-  (statically confirmed; the build waits for disk space on the maintainer's Mac).
+- Done: MCP-Server-Core builds and passes its task-store tests and the conformance
+  kit on 0.9.0, also under ThreadSanitizer, with only its version pin changed.
 - Re-pin the developer kit to 1.0.0 and run its recipes against the tag.
 - List the package on the Swift Package Index (hosted DocC, badges).
 - Done: build and test with the Swift 6.2 upcoming feature
