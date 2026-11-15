@@ -2,7 +2,6 @@
 
 @testable import SQLiteSwift
 import SQLiteSwiftTesting
-import Synchronization
 import Testing
 #if canImport(Darwin)
 import Darwin
@@ -12,8 +11,11 @@ import Glibc
 import Musl
 #endif
 
+// SQLiteLocked, not Mutex: ThreadSanitizer on Linux can't see Mutex's futex lock and
+// would report every contended access as a race.
 private final class Gauge: Sendable {
-    private let state = Mutex((current: 0, peak: 0))
+    private let state = SQLiteLocked(Peak())
+    private struct Peak: Sendable { var current = 0, peak = 0 }
     func enter() { state.withLock { $0.current += 1; $0.peak = max($0.peak, $0.current) } }
     func leave() { state.withLock { $0.current -= 1 } }
     var peak: Int { state.withLock { $0.peak } }

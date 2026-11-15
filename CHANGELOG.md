@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 — unreleased
+## 0.9.0 — 2026-11-15
 
 Release candidate for 1.0.0: the API is frozen, and the repository is ready for
 public use.
@@ -52,6 +52,8 @@ public use.
   `sqlite3_open_v2` raced (found by ThreadSanitizer on Linux).
 - Internal locks use `pthread_mutex_t`, which ThreadSanitizer sees on every platform,
   instead of `Synchronization.Mutex`, whose Linux futex lock it cannot see.
+- Tests: the concurrency gauge uses `SQLiteLocked` instead of `Mutex`, which
+  ThreadSanitizer on Linux reported as a race under contention.
 - CI: Linux ThreadSanitizer runs with ASLR disabled; the one remaining known-benign
   SQLite report and the XCTest runner's exit-time leaks are suppressed with reasons.
 
