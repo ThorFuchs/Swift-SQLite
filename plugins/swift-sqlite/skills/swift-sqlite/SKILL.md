@@ -6,7 +6,7 @@ description: "Integrate ThorFuchs/Swift-SQLite (module SQLiteSwift) into Swift c
 # Swift-SQLite consumer integration
 
 Help the developer implement and test their requested consumer behavior.
-This is kit 0.2.0, with recipes for released library **1.0.0**.
+This is kit 0.3.0, with recipes for released library **1.1.0**.
 The kit version is independent of the library version.
 It adds instructions and examples, without changing the library.
 
@@ -23,7 +23,7 @@ and products actually imported by the affected target.
 Match `https://github.com/ThorFuchs/Swift-SQLite.git`. Its module is `SQLiteSwift`.
 `import SQLite` is a different package (stephencelis/SQLite.swift); GRDB, Core Data,
 SwiftData and `SQLite3` are other tools. Do not mix their APIs into this one.
-If the dependency is absent, add it with `from: "1.0.0"` for a new integration,
+If the dependency is absent, add it with `from: "1.1.0"` for a new integration,
 unless the user chose otherwise.
 Preserve an existing requirement unless its change is part of the request.
 
@@ -41,9 +41,13 @@ version reference before you use an API, and never upgrade silently.
 | The 13-check conformance kit, temporary directories, a manual clock (test targets only) | SQLiteSwiftTesting |
 | Typed records, strict codecs, versioned snapshots, conditional writes, batches, a change stream | SQLiteSwiftModels |
 | A main-actor, observable editing context with conflict handling and live queries (apps) | SQLiteSwiftModelContext |
+| Metrics, tracing, logs and a lifecycle service on a server (each behind a package trait) | SQLiteSwiftServer |
 
 Add only the products the target uses and import them explicitly.
 SQLiteSwiftTesting belongs in test targets, never in shipping code.
+SQLiteSwiftServer is empty unless the dependency enables its traits
+(`traits: ["Metrics", "Tracing", "Logging", "ServiceLifecycle"]`); enable only the
+ones the target uses. Without a trait the package adds no dependencies.
 SQLiteSwiftModels has no main-actor code and suits servers; SQLiteSwiftModelContext
 is for apps that edit records in views.
 
@@ -77,6 +81,18 @@ limit behavior.
 - Compare-and-set and record writes return conflicts as values (`conflict`,
   `guardFailed`, `missing`). Handle each case; don't treat them as errors or
   overwrite without an expectation.
+
+## Operating on a server
+
+- Backups: `backup(to:)` (one snapshot, writes continue) or `vacuum(into:)` (a
+  compacted copy). Destinations are never overwritten; give large copies a deadline.
+- Checks and maintenance are explicit calls: `quickCheck()`, `integrityCheck()`,
+  `checkpoint(_:)`, `optimize()`, `incrementalVacuum(pages:)`. Nothing runs in the
+  background; schedule them yourself or with `SQLiteDatabaseService`.
+- Observe with `SQLiteConfiguration.observer` (an `SQLiteObserver`, called on the
+  calling task); combine several with `SQLiteObservers`. Keep observers cheap.
+- Test failure handling with `injectFault(.commitOutcomeUnknown)` from
+  SQLiteSwiftTesting. Turn on `verifiesMigrationChecksums` to catch edited migrations.
 
 ## Model layer
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Developer kit 0.3.0: pinned to library 1.1.0; four new recipes (backup and
+  maintenance, observer, fault injection, migration checksums), a "Operating on a
+  server" section and the `SQLiteSwiftServer` product in the skill, two new
+  evaluation cases.
+
 ## 1.1.0 — 2026-11-16
 
 Operate it on a server. Everything is additive: `Scripts/check-api.sh` against 1.0.0

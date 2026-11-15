@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "swift-sqlite",
-  "version": "0.2.0",
-  "description": "Version-aware consumer assistance for ThorFuchs/Swift-SQLite, validated against library 1.0.0.",
+  "version": "0.3.0",
+  "description": "Version-aware consumer assistance for ThorFuchs/Swift-SQLite, validated against library 1.1.0.",
   "author": {"name": "Thorsten Fuchs", "url": "https://github.com/ThorFuchs"},
   "repository": "https://github.com/ThorFuchs/Swift-SQLite",
   "license": "Apache-2.0",

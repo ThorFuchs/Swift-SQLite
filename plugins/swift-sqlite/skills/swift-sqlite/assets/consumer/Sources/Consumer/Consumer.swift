@@ -6,6 +6,7 @@ import SQLiteSwift
 import SQLiteSwiftModelContext
 import SQLiteSwiftModels
 import SQLiteSwiftTesting
+import Synchronization
 
 struct RecipeFailure: Error { let id: String }
 
@@ -338,6 +339,92 @@ func editingContext() async throws {
     await store.close()
 }
 
+// RECIPE backup-maintenance
+func backupAndMaintenance() async throws {
+    let path = try scratchPath("live.sqlite")
+    let database = try await SQLiteDatabase.open(SQLiteConfiguration(path: path), migrations: taskMigrations)
+    try await database.write { tx throws(SQLiteError) in
+        for i in 0..<500 {
+            try tx.execute("INSERT INTO tasks (id, state, payload) VALUES (?, 'done', ?)",
+                           [.text("t\(i)"), .blob([UInt8](repeating: 7, count: 256))])
+        }
+    }
+    let backupPath = try scratchPath("backup.sqlite")
+    let final = try await database.backup(to: backupPath, pagesPerStep: 16,
+                                          limits: SQLiteOperationLimits(timeout: .seconds(30)))
+    try check("backup-complete", final.copiedPages == final.totalPages && final.totalPages > 0)
+    let again = await sqliteError { try await database.backup(to: backupPath) }
+    try check("backup-never-overwrites", again?.code == .invalidArgument)
+    try await database.vacuum(into: try scratchPath("compact.sqlite"))
+    try check("quick-check", try await database.quickCheck().isIntact)
+    try await database.optimize()
+    await database.close()
+
+    let copy = try await SQLiteDatabase.open(SQLiteConfiguration(path: backupPath), migrations: taskMigrations)
+    let rows = try await copy.read { tx throws(SQLiteError) in try tx.scalar("SELECT count(*) FROM tasks") }
+    try check("backup-readable", rows == .integer(500))
+    try check("backup-intact", try await copy.integrityCheck().isIntact)
+    await copy.close()
+}
+
+// RECIPE observer
+final class OperationLog: SQLiteObserver {
+    private let lines = Mutex<[String]>([])
+    var all: [String] { lines.withLock { $0 } }
+
+    func operationDidFinish(_ report: SQLiteOperationReport, context: Void) {
+        let outcome = switch report.outcome {
+        case .succeeded: "ok"
+        case .rolledBack: "rolled back"
+        case .failed(let error): "failed \(error.code)"
+        }
+        lines.withLock { $0.append("\(report.operation.kind) \(outcome)") }
+    }
+}
+
+func observeOperations() async throws {
+    let log = OperationLog()
+    var configuration = SQLiteConfiguration.inMemory()
+    configuration.observer = log
+    let database = try await SQLiteDatabase.open(configuration, migrations: taskMigrations)
+    let insert: @Sendable (SQLiteTransaction) throws(SQLiteError) -> SQLiteChanges = { tx throws(SQLiteError) in
+        try tx.execute("INSERT INTO tasks (id, state, payload) VALUES ('a', 'working', x'')")
+    }
+    try await database.write(insert)
+    _ = await sqliteError { try await database.write(insert) }
+    _ = try await database.read { tx throws(SQLiteError) in try tx.scalar("SELECT count(*) FROM tasks") }
+    await database.close()
+    try check("observed", log.all == ["write ok", "write failed constraint", "read ok"])
+}
+
+// RECIPE fault-injection
+func faultInjection() async throws {
+    // In a consumer this belongs in a test target: SQLiteSwiftTesting is test-only.
+    let database = try await SQLiteDatabase.open(.inMemory(), migrations: taskMigrations)
+    try await database.injectFault(.commitOutcomeUnknown)
+    let key = UUID().uuidString
+    let outcome = await database.writeReportingOutcome { tx throws(SQLiteError) in
+        try tx.execute("INSERT INTO tasks (id, state, payload) VALUES (?, 'working', x'')", [.text(key)])
+    }
+    guard case .unknown = outcome else { throw RecipeFailure(id: "fault-not-injected") }
+    let durable = try await database.resolveCommit { tx throws(SQLiteError) in
+        try tx.queryOne("SELECT 1 FROM tasks WHERE id = ?", [.text(key)]) != nil
+    }
+    try check("unknown-resolved-not-durable", !durable)
+    await database.close()
+}
+
+// RECIPE migration-checksums
+func migrationChecksums() async throws {
+    let path = try scratchPath("checked.sqlite")
+    var configuration = SQLiteConfiguration(path: path)
+    configuration.verifiesMigrationChecksums = true
+    await (try await SQLiteDatabase.open(configuration, migrations: taskMigrations)).close()
+    let edited = [SQLiteMigration(version: 1, name: "tasks", sql: "CREATE TABLE tasks (id TEXT PRIMARY KEY);")]
+    let refused = await sqliteError { try await SQLiteDatabase.open(configuration, migrations: edited) }
+    try check("edited-migration-refused", refused?.code == .migrationModified)
+}
+
 @main
 enum SwiftSQLiteKit {
     static func main() async throws {
@@ -354,6 +441,10 @@ enum SwiftSQLiteKit {
         try await records()
         try await storeAndStream()
         try await editingContext()
+        try await backupAndMaintenance()
+        try await observeOperations()
+        try await faultInjection()
+        try await migrationChecksums()
         print("KIT_RECIPES all passed")
     }
 }

@@ -20,9 +20,13 @@ imports all four products for acceptance; a real target imports only what it use
 | records / records | 0.9 | SQLiteSwift, SQLiteSwiftModels | `verifySchema`; insert at revision 1; update to 2; stale update and duplicate insert conflict with the current row; delete, then `missing` |
 | store-stream / storeAndStream | 0.9 | SQLiteSwift, SQLiteSwiftModels | Snapshot plus stream; committed batch event with sequence and ids; rollback of a whole batch on one conflict |
 | editing-context / editingContext | 0.9 | SQLiteSwift, SQLiteSwiftModels, SQLiteSwiftModelContext | One handle per record; a second context's save makes the first conflict without losing its edit; explicit `keepLocal`, then a clean save |
+| backup-maintenance / backupAndMaintenance | 1.1 | SQLiteSwift | Backup with a deadline, never overwrites, `vacuum(into:)`, `quickCheck`, `optimize`; the copy opens with all rows and passes `integrityCheck` |
+| observer / observeOperations | 1.1 | SQLiteSwift | An observer sees each operation's kind and outcome in order, including a failed write |
+| fault-injection / faultInjection | 1.1 | SQLiteSwift, SQLiteSwiftTesting | An injected unknown commit is reported as `.unknown` and `resolveCommit` finds it not durable |
+| migration-checksums / migrationChecksums | 1.1 | SQLiteSwift | With checksums on, an edited shipped migration is refused with `migrationModified` |
 
 Copy the asset consumer into a fresh directory outside a library checkout before
-running it. It resolves public HTTPS exact 1.0.0 and writes `Package.resolved` and
+running it. It resolves public HTTPS exact 1.1.0 and writes `Package.resolved` and
 `.build` there. Run it in Debug and Release (`swift run -c release Consumer`);
 failed checks throw and exit nonzero. A printed line is not the acceptance
 predicate; the exit status is.
