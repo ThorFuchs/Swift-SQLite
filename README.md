@@ -72,7 +72,7 @@ Add the package to `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.0.0"),
+    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.1.0"),
 ],
 targets: [
     .target(name: "MyStore", dependencies: [

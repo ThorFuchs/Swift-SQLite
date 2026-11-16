@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-11-16
+
+Operate it on a server. Everything is additive: `Scripts/check-api.sh` against 1.0.0
+reports no breaking change, defaults are unchanged, and without a package trait the
+dependency graph is still empty. Upgrading from 1.0.0 needs no code change.
 
 ### Added
 
