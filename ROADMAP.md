@@ -125,8 +125,9 @@ Acceptance: conformance-kit checks `commitOutcome`, `settingsVerification`,
 
 - Done: MCP-Server-Core builds and passes its task-store tests and the conformance
   kit on 0.9.0, also under ThreadSanitizer, with only its version pin changed.
-- Re-pin the developer kit to 1.0.0 and run its recipes against the tag.
-- List the package on the Swift Package Index (hosted DocC, badges).
+- Done: the developer kit is re-pinned with every release (0.2.0 for 1.0.0, 0.3.0
+  for 1.1.0) and its recipes run against the tag.
+- Done: the package is listed on the Swift Package Index.
 - Done: build and test with the Swift 6.2 upcoming feature
   `NonisolatedNonsendingByDefault` (SE-0461); all tests pass, and CI keeps checking it.
 - Done: a first benchmark baseline ([Documentation/Benchmarks.md](Documentation/Benchmarks.md)).
@@ -172,7 +173,8 @@ deadline paths; backups are verified by opening and checking the copy.
 2. **Resumable change stream.** The store's sequence is already durable. A bounded
    change log lets a consumer call `subscribe(after: sequence)` after a restart
    (a transactional outbox), with `resyncRequired` when the log no longer reaches
-   back far enough.
+   back far enough. Built: `SQLiteModelStore.ChangeLog`, retention by batch count
+   (open question 6).
 3. **`Observations`.** Document and test model handles and live queries with
    `Observations` (SE-0475, Swift 6.2, also on Linux) for consumers outside SwiftUI.
 4. **Records from custom SQL.** `fetchAll(_:sql:_:)` maps a query's columns to a
@@ -275,16 +277,17 @@ and Linux.
 1. **Resolved:** 0.1.0 shipped with the typed `commitOutcomeUnknown`.
 2. **Engine version** for the isolated engine: SQLite 3.54.1 (current release), or
    Content's 3.55.0 pre-release candidate `43a48f77…` once released?
-3. **Package traits:** confirm they work with this repo's CI (Swift 6.4, Xcode 27.2)
-   and with consumers that pin exact versions. Settled by the first trait in 1.1.0
-   (instrumentation bridges); the engine probe reuses the answer.
+3. **Resolved (1.1.0):** package traits work in this repository's CI on Linux and
+   macOS and keep a consumer's graph empty; see question 5.
 4. **Packaging for Content:** vendored closure (no graph change) or a product
    dependency (needs Content's decision). Both are offered.
 5. **Resolved (1.1.0): package traits in this repository.** Tested with Swift 6.4: a
    dependency used only by a disabled trait is neither resolved nor fetched, so the
    default graph stays empty, also for consumers of the `SQLiteSwiftServer` product.
-6. **Change-log retention** for the resumable stream: by count, by age, or both, and
-   who prunes it.
+6. **Resolved (1.2.0): by count.** `ChangeLog.retain(batches:)` (default 10,000);
+   each managed write deletes batches beyond the count in its own transaction, so
+   the log is bounded without background work. Retention by age can be added later
+   if a consumer needs it.
 
 ## Not planned
 

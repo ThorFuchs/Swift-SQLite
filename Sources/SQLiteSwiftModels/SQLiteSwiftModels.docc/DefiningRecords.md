@@ -110,3 +110,28 @@ for await event in changes {
 
 Only writes made through the store in this process are published. Raw SQL, other
 processes and other `SQLiteDatabase` instances are not seen.
+
+## Resume after a restart
+
+Give the store a ``SQLiteModelStore/ChangeLog`` (and add
+``SQLiteModelSchema/changeLogMigration(version:name:)`` to the migrations). Every
+committed batch is then also written to a bounded log in its own transaction, and a
+consumer that remembers the last sequence it processed continues exactly there:
+
+```swift
+let store = SQLiteModelStore(database: database, changeLog: .retain(batches: 10_000))
+for await event in try await store.subscribe(after: lastProcessedSequence) {
+    switch event {
+    case .committed(let batch):
+        try await forward(batch)               // for example to a queue or a webhook
+        lastProcessedSequence = batch.sequence // store it with your own progress
+    case .resyncRequired:
+        break  // the log no longer reaches back far enough: take a new snapshot
+    }
+}
+```
+
+The missed batches come first, then the live ones, with nothing lost or repeated
+between them. When that can't be guaranteed (the log was pruned past the point,
+the store is behind the consumer, or the missed batches don't fit the buffer) the
+subscription delivers only `resyncRequired`.

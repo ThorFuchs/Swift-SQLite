@@ -153,7 +153,8 @@ the core does not import them.
   what they expect (`insert`, `update(_:expecting:)`, `delete(_:id:expecting:)`)
   and return `inserted`, `updated`, `deleted`, `conflict(current:)` or `missing`,
   all-or-nothing batches, and `SQLiteModelStore` with a committed-change stream
-  (snapshot handoff without gaps, bounded buffers, `resyncRequired`).
+  (snapshot handoff without gaps, bounded buffers, `resyncRequired`), resumable
+  after a restart from an optional, bounded change log.
 - **`SQLiteSwiftModelContext`** (apps): a main-actor `SQLiteModelContext` with one
   `@Observable` handle per record, atomic conditional `save()`, explicit conflict
   resolution, truthful handling of unknown commit outcomes, live handles and
