@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Resumable change stream: `SQLiteModelStore(database:changeLog:)` with
+  `ChangeLog.retain(batches:)` (default 10,000) writes every committed batch to a
+  bounded log in the same transaction (`SQLiteModelSchema.changeLogMigration(version:)`
+  creates it), and `subscribe(after:bufferSize:limits:)` continues after the last
+  processed sequence, also after a restart: the missed batches first, then the live
+  ones, exactly once. It delivers `resyncRequired` instead when the log was pruned
+  past the point, the store is behind, or the missed batches don't fit the buffer.
+
 ### Changed
 
 - Developer kit 0.3.0: pinned to library 1.1.0; four new recipes (backup and

@@ -12,6 +12,10 @@ public struct SQLiteChangeOrigin: Sendable, Hashable, CustomStringConvertible {
         value = SQLiteRecordVersion.newIncarnation()
     }
 
+    init(stored value: [UInt8]) {
+        self.value = value
+    }
+
     public var description: String {
         "origin " + value.prefix(4).map { byte in
             let digits = String(byte, radix: 16)
@@ -44,6 +48,13 @@ public struct SQLiteRecordChange: Sendable, Hashable {
         let descriptor = Record.descriptor
         guard table == descriptor.table.name else { return nil }
         return try? descriptor.keyCodec.decode(key, column: descriptor.keyColumn)
+    }
+
+    init(table: String, key: SQLiteRawValue, kind: Kind, version: SQLiteRecordVersion?) {
+        self.table = table
+        self.key = key
+        self.kind = kind
+        self.version = version
     }
 
     init?(_ report: SQLiteRecordWriteReport) {
@@ -157,6 +168,36 @@ final class SQLiteChangeHub: Sendable {
     }
 
     /// Sets the snapshot's sequence and drops what it already contains.
+    /// Puts the logged batches after a resume point in front of the subscriber's
+    /// queue, drops what they and the snapshot already cover, and sets the watermark.
+    func prime(_ history: [SQLiteCommittedChange], watermark: Int64, for id: UInt64) {
+        state.withLock { state in
+            guard var subscriber = state.subscribers[id] else { return }
+            subscriber.watermark = watermark
+            let live = subscriber.queue.filter { event in
+                if case .committed(let change) = event { return change.sequence > watermark }
+                return true
+            }
+            if history.count + live.count > subscriber.capacity {
+                subscriber.queue = [.resyncRequired]
+                subscriber.ending = true
+            } else {
+                subscriber.queue = history.map { .committed($0) } + live
+            }
+            state.subscribers[id] = subscriber
+        }
+    }
+
+    /// Tells one subscriber it can't be resumed: it gets only `resyncRequired`.
+    func resync(_ id: UInt64) {
+        state.withLock { state in
+            guard var subscriber = state.subscribers[id] else { return }
+            subscriber.queue = [.resyncRequired]
+            subscriber.ending = true
+            state.subscribers[id] = subscriber
+        }
+    }
+
     func setWatermark(_ watermark: Int64, for id: UInt64) {
         state.withLock { state in
             guard var subscriber = state.subscribers[id] else { return }

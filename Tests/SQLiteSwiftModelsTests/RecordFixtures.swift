@@ -98,6 +98,7 @@ let recordMigrations = [
         CREATE TABLE incomplete (id, title, featured, summary, status, incarnation);
         """),
     SQLiteModelSchema.migration(version: 2),
+    SQLiteModelSchema.changeLogMigration(version: 3),
 ]
 
 /// Inserts a record with raw SQL built from its descriptor (revision 1, a fresh
