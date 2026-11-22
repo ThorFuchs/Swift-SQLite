@@ -80,6 +80,15 @@ struct ArticleView: View {
 }
 ```
 
+Outside SwiftUI, `Observations` (Swift 6.2; macOS 26, iOS 26 and Linux) turns a
+handle or a live query into an async sequence:
+
+```swift
+for await title in Observations({ article.value.title }) {
+    print("now:", title)   // local edits and applied remote rows alike
+}
+```
+
 While ``SQLiteModelContext/observeChanges(bufferSize:)`` runs, clean handles take
 other contexts' saves, dirty ones keep their draft and become conflicted, and
 remote deletions are shown. A ``SQLiteLiveQuery`` re-reads its results after every

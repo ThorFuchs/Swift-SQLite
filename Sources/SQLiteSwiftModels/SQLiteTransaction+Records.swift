@@ -44,6 +44,51 @@ extension SQLiteTransaction {
         return snapshots
     }
 
+    /// Reads records from SQL you write: a join, a projection, an ordering of your
+    /// own. The result's columns are matched to the record **by name**.
+    ///
+    /// The query must return every column of the descriptor plus the revision and
+    /// incarnation columns, under exactly those names (alias them with `AS` when a
+    /// join makes a name ambiguous or different). Other columns are ignored. Values
+    /// are bound, never pasted into the SQL.
+    ///
+    /// ```swift
+    /// let rows = try tx.fetchAll(Article.self, sql: """
+    ///     SELECT a.* FROM articles a JOIN tags t ON t.article_id = a.id
+    ///     WHERE t.tag = ? ORDER BY a.title
+    ///     """, ["swift"])
+    /// ```
+    ///
+    /// - Throws: `SQLiteError.Code.schemaMismatch` naming a missing column,
+    ///   `invalidArgument` when a needed name appears twice in the result,
+    ///   `SQLiteError.Code.invalidStoredValue` for a value a codec refuses, and
+    ///   `SQLiteError.Code.rowLimitExceeded` instead of truncating.
+    public func fetchAll<Record: SQLiteRecord>(
+        _ type: Record.Type, sql: String, _ bindings: [SQLiteValue] = [], limits: SQLiteQueryLimits? = nil
+    ) throws(SQLiteError) -> [SQLiteRecordSnapshot<Record>] {
+        let descriptor = Record.descriptor
+        try descriptor.validate()
+        let rows = try queryRaw(sql, bindings.map(SQLiteRawValue.init), limits: limits)
+        guard let names = rows.first?.columnNames else { return [] }
+        var positions: [Int] = []
+        for name in descriptor.columnNames + [descriptor.revisionColumn, descriptor.incarnationColumn] {
+            let matches = names.indices.filter { names[$0] == name }
+            guard let position = matches.first else {
+                throw .schemaMismatch(setting: "result of the query for \(Record.self)", expected: "column \(name)", actual: "missing")
+            }
+            guard matches.count == 1 else {
+                throw .invalidArgument("the query returns column \(name) more than once; alias the one \(Record.self) needs")
+            }
+            positions.append(position)
+        }
+        var snapshots: [SQLiteRecordSnapshot<Record>] = []
+        snapshots.reserveCapacity(rows.count)
+        for row in rows {
+            snapshots.append(try descriptor.decode(positions.map { row.values[$0] }))
+        }
+        return snapshots
+    }
+
     /// Checks that the record's table exists and has every mapped column plus the
     /// revision and incarnation columns. Throws `SQLiteError.Code.schemaMismatch`
     /// otherwise. Extra columns are allowed.

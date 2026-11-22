@@ -177,9 +177,11 @@ deadline paths; backups are verified by opening and checking the copy.
    (open question 6).
 3. **`Observations`.** Document and test model handles and live queries with
    `Observations` (SE-0475, Swift 6.2, also on Linux) for consumers outside SwiftUI.
+   Done: tested and documented; no API was needed.
 4. **Records from custom SQL.** `fetchAll(_:sql:_:)` maps a query's columns to a
-   record by name, for joins and projections. No query builder.
+   record by name, for joins and projections. No query builder. Built.
 5. **Swift-JSON codec.** Exact JSON values as a record column, behind an opt-in trait.
+   Deferred until a consumer needs it; items 1–4 make up 1.2.0.
 
 Acceptance: the G4 and G5 evidence standards (barriers, no sleeps, ThreadSanitizer)
 apply, plus a restart test for the resumable stream.

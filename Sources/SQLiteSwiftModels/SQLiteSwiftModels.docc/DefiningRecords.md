@@ -67,6 +67,24 @@ let snapshot = try await database.read { tx throws(SQLiteError) in
 `fetchAll(_:where:limits:)` returns the matching records in key order and never
 truncates: more rows than the limit throw.
 
+### Your own SQL
+
+For joins, projections or an ordering of your own, write the SQL and let the
+columns map to the record **by name**:
+
+```swift
+let tagged = try await database.read { tx throws(SQLiteError) in
+    try tx.fetchAll(Article.self, sql: """
+        SELECT a.* FROM articles a JOIN tags t ON t.article_id = a.id
+        WHERE t.tag = ? ORDER BY a.title
+        """, ["swift"])
+}
+```
+
+The query returns every descriptor column plus `revision` and `incarnation` (alias
+them with `AS` if a join renames or duplicates them); other columns are ignored. A
+missing or ambiguous column is an error that names it.
+
 ## Write with an expectation
 
 Every write says what it expects: ``SQLiteWriteExpectation/absent`` to insert, or
