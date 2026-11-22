@@ -4,6 +4,11 @@
 
 ### Added
 
+- Async live results without the main actor: `SQLiteModelStore.records(_:where:limits:bufferSize:)`
+  returns `SQLiteLiveRecords`, an `AsyncSequence` of the current filtered result:
+  first the result, then one new result per change. Bursts are coalesced into one
+  read, unchanged results are skipped, a full buffer leads to a fresh read, and the
+  sequence ends on cancellation or when the store closes.
 - Resumable change stream: `SQLiteModelStore(database:changeLog:)` with
   `ChangeLog.retain(batches:)` (default 10,000) writes every committed batch to a
   bounded log in the same transaction (`SQLiteModelSchema.changeLogMigration(version:)`

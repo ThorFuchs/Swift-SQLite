@@ -169,7 +169,7 @@ deadline paths; backups are verified by opening and checking the copy.
 
 1. **Async live query.** `store.records(_:where:)` as an `AsyncSequence` of snapshots,
    without the main actor, coalescing bursts of changes. It feeds SSE and
-   WebSocket endpoints directly.
+   WebSocket endpoints directly. Built: `SQLiteLiveRecords`.
 2. **Resumable change stream.** The store's sequence is already durable. A bounded
    change log lets a consumer call `subscribe(after: sequence)` after a restart
    (a transactional outbox), with `resyncRequired` when the log no longer reaches
