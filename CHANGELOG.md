@@ -4,6 +4,12 @@
 
 ### Added
 
+- Records from your own SQL: `SQLiteTransaction.fetchAll(_:sql:_:limits:)` maps a
+  query's columns to a record by name, for joins, projections and custom ordering.
+  Missing or ambiguous columns are errors that name the column; extra columns are
+  ignored; results are never truncated.
+- `Observations` (SE-0475) works with `SQLiteModel` handles and `SQLiteLiveQuery`:
+  tested and documented for consumers outside SwiftUI.
 - Async live results without the main actor: `SQLiteModelStore.records(_:where:limits:bufferSize:)`
   returns `SQLiteLiveRecords`, an `AsyncSequence` of the current filtered result:
   first the result, then one new result per change. Bursts are coalesced into one
