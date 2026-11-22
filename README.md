@@ -154,7 +154,8 @@ the core does not import them.
   and return `inserted`, `updated`, `deleted`, `conflict(current:)` or `missing`,
   all-or-nothing batches, and `SQLiteModelStore` with a committed-change stream
   (snapshot handoff without gaps, bounded buffers, `resyncRequired`), resumable
-  after a restart from an optional, bounded change log.
+  after a restart from an optional, bounded change log, and
+  `store.records(_:where:)`, an `AsyncSequence` of live results for server push.
 - **`SQLiteSwiftModelContext`** (apps): a main-actor `SQLiteModelContext` with one
   `@Observable` handle per record, atomic conditional `save()`, explicit conflict
   resolution, truthful handling of unknown commit outcomes, live handles and

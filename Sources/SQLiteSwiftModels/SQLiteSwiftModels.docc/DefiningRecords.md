@@ -111,6 +111,22 @@ for await event in changes {
 Only writes made through the store in this process are published. Raw SQL, other
 processes and other `SQLiteDatabase` instances are not seen.
 
+## Live results on a server
+
+``SQLiteModelStore/records(_:where:limits:bufferSize:)`` follows a filtered result
+without the main actor, for example to push it over server-sent events:
+
+```swift
+for try await drafts in store.records(Article.self, where: .equals("status", "draft")) {
+    try await send(drafts.map(\.value))
+}
+```
+
+The first element is the current result; then a new one follows each batch that
+changes it. Bursts are coalesced into one read, unchanged results are skipped, and
+a full buffer leads to a fresh read instead of a gap. The sequence ends when its
+task is cancelled or the store closes.
+
 ## Resume after a restart
 
 Give the store a ``SQLiteModelStore/ChangeLog`` (and add

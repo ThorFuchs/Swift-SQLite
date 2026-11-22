@@ -66,4 +66,5 @@ observable editing context in an app, see the `SQLiteSwiftModelContext` module.
 - ``SQLiteRecordChange``
 - ``SQLiteChangeOrigin``
 - ``SQLiteModelStore/ChangeLog``
+- ``SQLiteLiveRecords``
 - ``SQLiteModelSchema``
