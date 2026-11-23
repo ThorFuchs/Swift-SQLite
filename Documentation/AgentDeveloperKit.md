@@ -1,6 +1,6 @@
 # Swift-SQLite developer kit
 
-Kit **0.3.0** is pinned to released **Swift-SQLite 1.1.0**. The two version numbers
+Kit **0.4.0** is pinned to released **Swift-SQLite 1.2.0**. The two version numbers
 are separate: the kit adds instructions and examples for coding agents and changes
 nothing in the library.
 
@@ -39,7 +39,7 @@ invoke the skill by name. The portable manifest uses the Agent Plugins format wi
 | [SKILL.md](../plugins/swift-sqlite/skills/swift-sqlite/SKILL.md) | When to use the skill, product choice, the rules agents get wrong most often |
 | [references/versions.md](../plugins/swift-sqlite/skills/swift-sqlite/references/versions.md) | Which release added which API; manifest lines |
 | [references/semantics.md](../plugins/swift-sqlite/skills/swift-sqlite/references/semantics.md) | Transactions, errors, commit outcomes, limits, model layer |
-| [references/recipes.md](../plugins/swift-sqlite/skills/swift-sqlite/references/recipes.md) | Routing to the 17 compiled recipes and what each asserts |
+| [references/recipes.md](../plugins/swift-sqlite/skills/swift-sqlite/references/recipes.md) | Routing to the 20 compiled recipes and what each asserts |
 | [references/troubleshooting.md](../plugins/swift-sqlite/skills/swift-sqlite/references/troubleshooting.md) | Compiler and runtime errors agents hit, with fixes |
 | [references/installation.md](../plugins/swift-sqlite/skills/swift-sqlite/references/installation.md) | Installing the kit |
 | [references/compatibility.json](../plugins/swift-sqlite/skills/swift-sqlite/references/compatibility.json) | The qualified tag, commit and tree, and the recipe IDs |
@@ -69,8 +69,8 @@ To move the kit to a new library release: change the pin in the consumer's
 
 ## Status
 
-- Kit 0.3.0 is a source candidate in this repository (0.2.0 targeted library
-  1.0.0, 0.1.0 library 0.9.0). A download release (`developer-kit-v0.3.0`) is a
-  separate maintainer decision.
+- Kit 0.4.0 is a source candidate in this repository (0.3.0 targeted library
+  1.1.0, 0.2.0 library 1.0.0, 0.1.0 library 0.9.0). A download release
+  (`developer-kit-v0.4.0`) is a separate maintainer decision.
 - Installation from GitHub and end-to-end use in an agent session are not recorded
   yet.

@@ -425,6 +425,62 @@ func migrationChecksums() async throws {
     try check("edited-migration-refused", refused?.code == .migrationModified)
 }
 
+// RECIPE live-records
+func liveRecords() async throws {
+    let database = try await SQLiteDatabase.open(.inMemory(), migrations: articleMigrations)
+    let store = SQLiteModelStore(database: database)
+    var drafts = store.records(Article.self, where: .equals("title", "Draft")).makeAsyncIterator()
+    try check("live-initial", try await drafts.next()?.isEmpty == true)
+    try await store.writeRecords([.insert(Article(id: "other", title: "Published", publishedAt: nil))])  // outside the filter
+    try await store.writeRecords([.insert(Article(id: "d1", title: "Draft", publishedAt: nil))])
+    try check("live-update", try await drafts.next()?.map(\.value.id) == ["d1"])  // no emission in between
+    await store.close()
+}
+
+// RECIPE resume-after-restart
+let loggedMigrations = articleMigrations + [SQLiteModelSchema.changeLogMigration(version: 3)]
+
+func resumeAfterRestart() async throws {
+    let path = try scratchPath("resume.sqlite")
+    let first = try await SQLiteDatabase.open(SQLiteConfiguration(path: path), migrations: loggedMigrations)
+    let store = SQLiteModelStore(database: first, changeLog: .retain(batches: 1_000))
+    for id in ["a", "b", "c"] {
+        try await store.writeRecords([.insert(Article(id: id, title: id, publishedAt: nil))])
+    }
+    await store.close()
+    let lastProcessed: Int64 = 1  // persisted by the consumer with its own progress
+
+    let second = try await SQLiteDatabase.open(SQLiteConfiguration(path: path), migrations: loggedMigrations)
+    let resumed = SQLiteModelStore(database: second, changeLog: .retain(batches: 1_000))
+    var events = try await resumed.subscribe(after: lastProcessed).makeAsyncIterator()
+    var sequences: [Int64] = []
+    for _ in 0..<2 {
+        guard case .committed(let batch) = await events.next() else { throw RecipeFailure(id: "resume") }
+        sequences.append(batch.sequence)
+    }
+    try check("resumed-exactly", sequences == [2, 3])
+    await resumed.close()
+}
+
+// RECIPE custom-sql
+func customSQL() async throws {
+    let database = try await SQLiteDatabase.open(.inMemory(), migrations: articleMigrations)
+    let tagged = try await database.write { tx throws(SQLiteError) in
+        _ = try tx.insert(Article(id: "a", title: "Zeta", publishedAt: nil))
+        _ = try tx.insert(Article(id: "b", title: "Alpha", publishedAt: nil))
+        try tx.executeScript("""
+            CREATE TABLE tags (article_id TEXT NOT NULL, tag TEXT NOT NULL);
+            INSERT INTO tags VALUES ('a', 'swift'), ('b', 'swift');
+            """)
+        return try tx.fetchAll(Article.self, sql: """
+            SELECT a.* FROM articles a JOIN tags t ON t.article_id = a.id
+            WHERE t.tag = ? ORDER BY a.title
+            """, ["swift"])
+    }
+    try check("custom-sql", tagged.map(\.value.title) == ["Alpha", "Zeta"])
+    await database.close()
+}
+
 @main
 enum SwiftSQLiteKit {
     static func main() async throws {
@@ -445,6 +501,9 @@ enum SwiftSQLiteKit {
         try await observeOperations()
         try await faultInjection()
         try await migrationChecksums()
+        try await liveRecords()
+        try await resumeAfterRestart()
+        try await customSQL()
         print("KIT_RECIPES all passed")
     }
 }

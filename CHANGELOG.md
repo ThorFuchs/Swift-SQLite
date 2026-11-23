@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Developer kit 0.4.0: pinned to library 1.2.0; three new recipes (live results,
+  resuming after a restart, records from custom SQL), server guidance for the model
+  layer in the skill, and an SSE-with-resume evaluation case.
+
 ## 1.2.0 — 2026-11-23
 
 The model layer on the server. Everything is additive: `Scripts/check-api.sh`

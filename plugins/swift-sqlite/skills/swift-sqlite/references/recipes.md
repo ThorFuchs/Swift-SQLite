@@ -24,9 +24,12 @@ imports all four products for acceptance; a real target imports only what it use
 | observer / observeOperations | 1.1 | SQLiteSwift | An observer sees each operation's kind and outcome in order, including a failed write |
 | fault-injection / faultInjection | 1.1 | SQLiteSwift, SQLiteSwiftTesting | An injected unknown commit is reported as `.unknown` and `resolveCommit` finds it not durable |
 | migration-checksums / migrationChecksums | 1.1 | SQLiteSwift | With checksums on, an edited shipped migration is refused with `migrationModified` |
+| live-records / liveRecords | 1.2 | SQLiteSwift, SQLiteSwiftModels | The current result first; a change outside the filter emits nothing; a matching insert emits the new result |
+| resume-after-restart / resumeAfterRestart | 1.2 | SQLiteSwift, SQLiteSwiftModels | After closing and reopening, `subscribe(after:)` delivers exactly the batches after the persisted sequence |
+| custom-sql / customSQL | 1.2 | SQLiteSwift, SQLiteSwiftModels | A join with a bound value and its own ordering maps to records by column name |
 
 Copy the asset consumer into a fresh directory outside a library checkout before
-running it. It resolves public HTTPS exact 1.1.0 and writes `Package.resolved` and
+running it. It resolves public HTTPS exact 1.2.0 and writes `Package.resolved` and
 `.build` there. Run it in Debug and Release (`swift run -c release Consumer`);
 failed checks throw and exit nonzero. A printed line is not the acceptance
 predicate; the exit status is.

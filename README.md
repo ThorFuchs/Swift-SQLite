@@ -183,7 +183,7 @@ Guides: [Defining records](Sources/SQLiteSwiftModels/SQLiteSwiftModels.docc/Defi
   for all three modules with `Scripts/build-docs.sh`.
 - [CHANGELOG](CHANGELOG.md), including how to migrate between versions.
 - [Developer kit](Documentation/AgentDeveloperKit.md) for coding agents (Claude Code,
-  Codex): an instruction-only `swift-sqlite` skill with 17 compiled recipes. Install in
+  Codex): an instruction-only `swift-sqlite` skill with 20 compiled recipes. Install in
   Claude Code with `/plugin marketplace add ThorFuchs/Swift-SQLite`, then
   `/plugin install swift-sqlite@swift-sqlite`. Contributors: [AGENTS.md](AGENTS.md).
 - [Roadmap](ROADMAP.md): after 1.0.0, operating it on a server (1.1.0: backups,
