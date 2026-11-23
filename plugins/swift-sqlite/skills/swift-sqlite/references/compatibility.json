@@ -4,8 +4,8 @@
   "library": {
     "repository": "https://github.com/ThorFuchs/Swift-SQLite",
     "tag": "1.2.0",
-    "commit": "PENDING-TAG",
-    "tree": "PENDING-TAG",
+    "commit": "df12fe55265de81e2fc4bca91cb85704343b528f",
+    "tree": "74e6e38243b26aa0c31e75777075ad35c34abda9",
     "products": [
       "SQLiteSwift",
       "SQLiteSwiftModels",
