@@ -7,7 +7,7 @@ set -eu
 cd "$(dirname "$0")/.."
 # Use docc from PATH, or the one in the active Xcode toolchain.
 DOCC="${DOCC:-$(command -v docc || xcrun --find docc)}"
-MODULES="${*:-SQLiteSwift SQLiteSwiftModels SQLiteSwiftModelContext SQLiteSwiftServer}"
+MODULES="${*:-SQLiteSwift SQLiteSwiftModels SQLiteSwiftModelContext SQLiteSwiftServer SQLiteSwiftJSON}"
 rm -rf .build/docs/symbols
 # Every trait on, so the server bridges are documented too.
 swift package --enable-all-traits --scratch-path .build/docs/build dump-symbol-graph --minimum-access-level public

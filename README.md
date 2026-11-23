@@ -87,11 +87,11 @@ targets: [
 
 | | |
 | --- | --- |
-| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers); opt-in model layer: `SQLiteSwiftModels` and `SQLiteSwiftModelContext`; server bridges: `SQLiteSwiftServer` |
+| **Products** | `SQLiteSwift` (the library) and `SQLiteSwiftTesting` (conformance kit and test helpers); opt-in model layer: `SQLiteSwiftModels` and `SQLiteSwiftModelContext`; server bridges: `SQLiteSwiftServer`; Swift-JSON codecs: `SQLiteSwiftJSON` |
 | **Platforms** | macOS 15+, iOS 18+, Linux (x86_64 and arm64) |
 | **Toolchain** | Swift 6.4, Swift 6 language mode, strict concurrency, typed throws |
 | **SQLite** | The system SQLite on Apple platforms; a pinned, unmodified SQLite 3.54.1 amalgamation on Linux ([provenance](Sources/CSQLiteSwift/PROVENANCE.md)) |
-| **Dependencies** | None by default. The opt-in traits `Metrics`, `Tracing`, `Logging` and `ServiceLifecycle` add swift-metrics, swift-distributed-tracing, swift-log and swift-service-lifecycle; without them SwiftPM resolves nothing |
+| **Dependencies** | None by default. The opt-in traits `Metrics`, `Tracing`, `Logging` and `ServiceLifecycle` add swift-metrics, swift-distributed-tracing, swift-log and swift-service-lifecycle, and `SwiftJSON` adds Swift-JSON; without them SwiftPM resolves nothing |
 
 ## What it guarantees
 
@@ -107,7 +107,7 @@ targets: [
 | File identity | An optional `SQLiteFileIdentity` (`application_id`, `page_size`, `auto_vacuum`) is written to new files and checked on existing ones; the wrong file is refused with `.fileIdentityMismatch` and left untouched. |
 | Bounded reads | Row limits and byte budgets on every query (1 MiB default, 16 MiB hard cap, also enforced as `SQLITE_LIMIT_LENGTH`), `length()` checks before loading BLOBs, and a bounded statement cache. Results are never silently truncated. |
 | Byte-exact values | `queryRaw` and `executeRaw` keep TEXT as its stored bytes, including invalid UTF-8 and NUL. |
-| JSON | SQLite's JSON functions on every platform, tested in CI: JSONB storage, path filters (`body ->> '$.status'`), `json_each` for arrays, indexes on paths, exact integers above 2^53. |
+| JSON | SQLite's JSON functions on every platform, tested in CI: JSONB storage, path filters (`body ->> '$.status'`), `json_each` for arrays, indexes on paths, exact integers above 2^53. With the `SwiftJSON` trait, records store exact Swift-JSON values (`.jsonText`) and `Codable` types (`.json(T.self)`) as JSON text that those functions query. |
 | Helpers | Compare-and-set with typed guards, keyset pagination, typed predicates with bound values, quoted identifiers, expiry queries on an injectable clock. |
 | Observability | An optional `SQLiteObserver` sees every operation's kind, connection wait, duration and outcome, on the calling task. Bridges to swift-metrics, swift-distributed-tracing (spans nest under the request's span) and swift-log, plus a swift-service-lifecycle service, come as opt-in package traits. |
 | Errors | `SQLiteError` carries a `code` that can grow without breaking your `switch`, plus typed detail. Catch by code: `catch SQLiteError.Code.busy`. |

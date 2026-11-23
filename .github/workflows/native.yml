@@ -107,8 +107,8 @@ jobs:
         run: |
           swift build --build-tests
           swift test
-      - name: Build and test the server bridges (every package trait)
-        run: swift test --enable-all-traits --scratch-path .build/traits --filter SQLiteSwiftServerTests
+      - name: Build and test the trait modules (server bridges, Swift-JSON codecs)
+        run: swift test --enable-all-traits --scratch-path .build/traits --filter "SQLiteSwiftServerTests|SQLiteSwiftJSONTests"
       - name: Test with NonisolatedNonsendingByDefault (SE-0461)
         # Consumers may turn this Swift 6.2 upcoming feature on; the package must
         # behave the same with it.

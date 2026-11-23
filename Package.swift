@@ -30,6 +30,8 @@ let package = Package(
         .library(name: "SQLiteSwiftModelContext", targets: ["SQLiteSwiftModelContext"]),
         // Bridges to the Swift server ecosystem; each is switched on by a trait.
         .library(name: "SQLiteSwiftServer", targets: ["SQLiteSwiftServer"]),
+        // Record codecs for Swift-JSON values; switched on by the SwiftJSON trait.
+        .library(name: "SQLiteSwiftJSON", targets: ["SQLiteSwiftJSON"]),
     ],
     // Every trait is off by default, so a consumer's dependency graph stays empty
     // unless it asks for a bridge.
@@ -38,6 +40,7 @@ let package = Package(
         .trait(name: "Tracing", description: "SQLiteTracingObserver for swift-distributed-tracing."),
         .trait(name: "Logging", description: "SQLiteLoggingObserver for swift-log."),
         .trait(name: "ServiceLifecycle", description: "SQLiteDatabaseService for swift-service-lifecycle."),
+        .trait(name: "SwiftJSON", description: "Record codecs for exact Swift-JSON values (SQLiteSwiftJSON)."),
         .default(enabledTraits: []),
     ],
     dependencies: [
@@ -45,6 +48,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.7.4"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.17.0"),
         .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.13.0"),
+        .package(url: "https://github.com/ThorFuchs/Swift-JSON.git", from: "1.9.0"),
     ],
     targets: [
         // Pinned, unmodified SQLite amalgamation. `shim.c` compiles it on Linux only;
@@ -91,6 +95,22 @@ let package = Package(
                 .product(name: "Tracing", package: "swift-distributed-tracing", condition: .when(traits: ["Tracing"])),
                 .product(name: "Logging", package: "swift-log", condition: .when(traits: ["Logging"])),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle", condition: .when(traits: ["ServiceLifecycle"])),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .target(
+            name: "SQLiteSwiftJSON",
+            dependencies: [
+                "SQLiteSwift", "SQLiteSwiftModels",
+                .product(name: "JSON", package: "swift-json", condition: .when(traits: ["SwiftJSON"])),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "SQLiteSwiftJSONTests",
+            dependencies: [
+                "SQLiteSwiftJSON", "SQLiteSwiftModels", "SQLiteSwift", "SQLiteSwiftTesting",
+                .product(name: "JSON", package: "swift-json", condition: .when(traits: ["SwiftJSON"])),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

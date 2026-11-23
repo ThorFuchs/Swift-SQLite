@@ -182,7 +182,9 @@ deadline paths; backups are verified by opening and checking the copy.
 4. **Records from custom SQL.** `fetchAll(_:sql:_:)` maps a query's columns to a
    record by name, for joins and projections. No query builder. Built.
 5. **Swift-JSON codec.** Exact JSON values as a record column, behind an opt-in trait.
-   Deferred until a consumer needs it; items 1–4 make up 1.2.0.
+   Deferred from 1.2.0; built for 1.3.0 as `SQLiteSwiftJSON` (`.jsonText`,
+   `.json(T.self)`). The RFC 8785 canonical codec waits for a Swift-JSON release that
+   contains `JSONCanonicalWriter`.
 
 Acceptance: the G4 and G5 evidence standards (barriers, no sleeps, ThreadSanitizer)
 apply, plus a restart test for the resumable stream.
