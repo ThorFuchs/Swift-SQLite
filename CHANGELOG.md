@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Documentation
+
+- JSON in SQL: a Getting Started section and tests on every platform (JSONB
+  storage, path filters, `json_each`, an index on a path that the planner uses,
+  exact integers above 2^53, malformed input refused, `jsonb_set`).
+
 ### Changed
 
 - Developer kit 0.4.0: pinned to library 1.2.0; three new recipes (live results,

@@ -147,6 +147,36 @@ must come back exactly (canonical JSON, hashed content), use
 ``SQLiteTransaction/queryRaw(_:_:limits:)`` and
 ``SQLiteTransaction/executeRaw(_:_:)`` with ``SQLiteRawValue``.
 
+## Store and query JSON
+
+SQLite's JSON functions are available on every platform (Apple's system SQLite and
+the engine compiled on Linux). Store documents as JSONB, filter by path, search in
+arrays and index a path, with every value bound:
+
+```swift
+// Migration: a JSONB column that only accepts well-formed JSONB, and an index on a path.
+SQLiteMigration(version: 1, name: "docs", sql: """
+    CREATE TABLE docs (id INTEGER PRIMARY KEY, body BLOB NOT NULL CHECK (json_valid(body, 8)));
+    CREATE INDEX docs_status ON docs (body ->> '$.status');
+    """)
+
+try await database.write { tx throws(SQLiteError) in
+    try tx.execute("INSERT INTO docs (body) VALUES (jsonb(?))", [.text(jsonText)])
+}
+let open = try await database.read { tx throws(SQLiteError) in
+    try tx.query("SELECT id, json(body) FROM docs WHERE body ->> '$.status' = ?", ["open"])
+}
+let tagged = try await database.read { tx throws(SQLiteError) in
+    try tx.query("SELECT DISTINCT d.id FROM docs d, json_each(d.body, '$.tags') t WHERE t.value = ?", ["swift"])
+}
+```
+
+The index is used when the query names the same path literally (`body ->> '$.status'`).
+Integers above 2^53 stay exact. `jsonb_set` changes one field in place. When the
+exact bytes of a canonical JSON encoding matter (hashes, signatures), store those
+bytes as a BLOB and read them with ``SQLiteTransaction/queryRaw(_:_:limits:)``
+instead.
+
 ## Page through rows
 
 For bounded batch scans (recovery after a restart, expiry sweeps), use keyset
