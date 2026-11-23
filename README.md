@@ -72,7 +72,7 @@ Add the package to `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.1.0"),
+    .package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.2.0"),
 ],
 targets: [
     .target(name: "MyStore", dependencies: [
@@ -117,7 +117,7 @@ targets: [
 Turn on the traits you need. Without them the package still adds no dependencies:
 
 ```swift
-.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.1.0",
+.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.2.0",
          traits: ["Metrics", "Tracing", "Logging", "ServiceLifecycle"]),
 // target: .product(name: "SQLiteSwiftServer", package: "Swift-SQLite")
 ```

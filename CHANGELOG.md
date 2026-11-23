@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-11-23
+
+The model layer on the server. Everything is additive: `Scripts/check-api.sh`
+against 1.1.0 reports no breaking change and defaults are unchanged. Upgrading
+from 1.1.0 needs no code change; the change log is opt-in and has its own
+migration.
 
 ### Added
 

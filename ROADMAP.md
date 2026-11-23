@@ -1,10 +1,11 @@
 # Swift-SQLite roadmap
 
-Status: updated 16 November 2026. **1.0.0** (stable API, model layer, public polish)
-and **1.1.0** (operating it on a server: backups, maintenance, observation hooks,
-server bridges as traits, fault injection, migration checksums) are released. Next:
-**1.2.0** brings the model layer to servers (async live queries, a resumable change
-stream), and the opt-in profiles follow by consumer demand.
+Status: updated 23 November 2026. **1.0.0** (stable API, model layer, public polish),
+**1.1.0** (operating it on a server: backups, maintenance, observation hooks,
+server bridges as traits, fault injection, migration checksums) and **1.2.0** (the
+model layer on the server: async live results, a resumable change stream, records
+from custom SQL, `Observations`) are released. Next: the opt-in profiles, by
+consumer demand.
 Original proposal: 12 November 2026. It extends the 0.1.0 scope (ADR-0004 phase C
 requirements from MCP-Server) with what we learned from the Content Collections
 compatibility brief of 12 November 2026. Versions are targets, not commitments.
@@ -67,7 +68,7 @@ force a break lands first.
 | 0.9.0 (model layer) | Opt-in model layer (`SQLiteSwiftModels`, `SQLiteSwiftModelContext`) joins the release candidate and its API freeze: record snapshots, conditional writes, a committed-change stream and observable editing handles. Decisions and gates: [MODEL-ARCHITECTURE.md](Documentation/MODEL-ARCHITECTURE.md) | released in `0.9.0` |
 | 1.0.0 | Tagged with a GitHub Release once 0.9.0 has been validated by MCP-Server-Core without API changes | released (tag `1.0.0`); Core validated 0.9.0 green with only its pin changed |
 | 1.1.0 | Operate it on a server: online backup, `VACUUM INTO`, integrity checks, explicit maintenance, dependency-free instrumentation hooks, public fault injection, migration checksums, FTS5 on Linux; server bridges as package traits | released (tag `1.1.0`) |
-| 1.2.0 | The model layer on the server: an async live query without the main actor, a resumable change stream, `Observations` support, records from custom SQL, an opt-in Swift-JSON codec | planned |
+| 1.2.0 | The model layer on the server: an async live query without the main actor, a resumable change stream, `Observations` support, records from custom SQL (the Swift-JSON codec is deferred) | released (tag `1.2.0`) |
 | 1.3.0+ | Opt-in profiles (rollback store, read-only source and image, confinement, lock file), scheduled when a consumer needs them | by demand |
 | Later | One isolated engine everywhere, gated by a probe; the modern-Swift watch list | probe first |
 
