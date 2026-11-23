@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "kit_version": "0.3.0",
+  "kit_version": "0.4.0",
   "note": "Prompts for evaluating the swift-sqlite skill in a fresh agent session. Kept outside the skill and its archives. 'expect' lists behavior a reviewer checks; 'trigger' says whether the skill should be used.",
   "cases": [
     {
@@ -9,7 +9,7 @@
       "prompt": "Add Swift-SQLite to my package and store user settings in a table.",
       "expect": [
         "Matches ThorFuchs/Swift-SQLite and imports SQLiteSwift, not SQLite",
-        "Uses from: \"1.1.0\" unless told otherwise",
+        "Uses from: \"1.2.0\" unless told otherwise",
         "Numbered migration, bound values, awaits close()"
       ]
     },
@@ -121,6 +121,16 @@
         "Uses backup(to:) or vacuum(into:) to a new path with a deadline",
         "Verifies the copy (quickCheck/integrityCheck)",
         "Does not copy the database file with FileManager while it is open"
+      ]
+    },
+    {
+      "id": "sse-resume",
+      "trigger": true,
+      "prompt": "Stream changes of my orders table to clients over SSE, and don't lose events when the server restarts.",
+      "expect": [
+        "Uses store.records(_:where:) or a store subscription, not polling",
+        "Keeps a ChangeLog and resumes with subscribe(after:) from a persisted sequence",
+        "Handles resyncRequired by sending a fresh snapshot"
       ]
     },
     {

@@ -6,7 +6,7 @@ description: "Integrate ThorFuchs/Swift-SQLite (module SQLiteSwift) into Swift c
 # Swift-SQLite consumer integration
 
 Help the developer implement and test their requested consumer behavior.
-This is kit 0.3.0, with recipes for released library **1.1.0**.
+This is kit 0.4.0, with recipes for released library **1.2.0**.
 The kit version is independent of the library version.
 It adds instructions and examples, without changing the library.
 
@@ -23,7 +23,7 @@ and products actually imported by the affected target.
 Match `https://github.com/ThorFuchs/Swift-SQLite.git`. Its module is `SQLiteSwift`.
 `import SQLite` is a different package (stephencelis/SQLite.swift); GRDB, Core Data,
 SwiftData and `SQLite3` are other tools. Do not mix their APIs into this one.
-If the dependency is absent, add it with `from: "1.1.0"` for a new integration,
+If the dependency is absent, add it with `from: "1.2.0"` for a new integration,
 unless the user chose otherwise.
 Preserve an existing requirement unless its change is part of the request.
 
@@ -101,7 +101,11 @@ A version is revision plus incarnation; a key deleted and inserted again never
 matches an old version. Managed tables need `revision` and `incarnation` columns
 and `SQLiteModelSchema.migration(version:)` in the migration list.
 The change stream reports only writes made through the same `SQLiteModelStore` in
-this process. A context's conflict resolution (`useRemote`, `keepLocal`,
+this process. On a server, push live results with `store.records(_:where:)` (an
+`AsyncSequence`, no main actor) and let consumers resume after a restart with a
+store `changeLog` and `subscribe(after:)`; treat `resyncRequired` as "take a new
+snapshot". For joins and projections use `fetchAll(_:sql:_:)`, which maps columns
+by name; don't build a query builder. A context's conflict resolution (`useRemote`, `keepLocal`,
 `discard`) is the user's decision; never pick one silently. `keepLocal` keeps the
 whole local value; there is no field merge.
 

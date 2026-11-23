@@ -1,6 +1,6 @@
 # Versions and products
 
-The kit is validated against library **1.1.0** (tag `1.1.0`). Use only APIs that
+The kit is validated against library **1.2.0** (tag `1.2.0`). Use only APIs that
 exist in the version the consumer actually resolves.
 
 | Library version | Adds |
@@ -10,6 +10,7 @@ exist in the version the consumer actually resolves.
 | 0.9.0 | API freeze for 1.0.0. `SQLitePredicate` is a struct (build with the same `.equals`, `.notIn`, … spellings; don't pattern-match on cases); `SQLiteError.isStop` renamed `isInterruption`; `SQLiteSynchronous.extra`; new codes `schemaMismatch`, `invalidStoredValue`; new products `SQLiteSwiftModels` and `SQLiteSwiftModelContext` |
 | 1.0.0 | The first stable release: the 0.9.0 API, unchanged. Upgrading from 0.9.0 needs only the new requirement |
 | 1.1.0 | `backup(to:)`, `vacuum(into:)`, `integrityCheck()`, `quickCheck()`, `optimize()`, `incrementalVacuum(pages:)`; `SQLiteObserver`, `SQLiteObservers`, `SQLiteConfiguration.observer`; `verifiesMigrationChecksums` and code `migrationModified`; FTS5 on Linux; `SQLiteSwiftTesting.injectFault(_:)`; product `SQLiteSwiftServer` with traits `Metrics`, `Tracing`, `Logging`, `ServiceLifecycle` |
+| 1.2.0 | `SQLiteModelStore.records(_:where:limits:bufferSize:)` (`SQLiteLiveRecords`); `SQLiteModelStore(database:changeLog:)`, `ChangeLog.retain(batches:)`, `subscribe(after:bufferSize:limits:)`, `SQLiteModelSchema.changeLogMigration(version:)`; `fetchAll(_:sql:_:limits:)` |
 
 From 1.0.0 on, minor releases only add API, error codes and conformance checks;
 only a major release may break source compatibility, so `from: "1.0.0"` is safe.
@@ -19,7 +20,7 @@ A consumer still on 0.x pinned with `.upToNextMinor(from:)`; moving from 0.9.0 t
 ## Manifest
 
 ```text
-.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.1.0")
+.package(url: "https://github.com/ThorFuchs/Swift-SQLite.git", from: "1.2.0")
 
 .product(name: "SQLiteSwift", package: "Swift-SQLite")             // library code
 .product(name: "SQLiteSwiftModels", package: "Swift-SQLite")       // records, store
