@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Swift-JSON codecs (`SQLiteSwiftJSON`, trait `SwiftJSON`; without the trait the
+  graph stays empty): `SQLiteCodec<JSON>.jsonText` stores an exact Swift-JSON value
+  as compact JSON text (numbers as parsed) that SQLite's JSON functions and path
+  indexes work on; `SQLiteCodec.json(_:)` does the same for any `Codable` type through
+  Swift-JSON's exact coding. Reading refuses invalid JSON, JSONB BLOBs and NULL,
+  naming the column. An RFC 8785 canonical codec follows once Swift-JSON releases
+  its canonical writer (it is not in 1.9.0).
+
 ### Documentation
 
 - JSON in SQL: a Getting Started section and tests on every platform (JSONB
