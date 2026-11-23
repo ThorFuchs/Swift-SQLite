@@ -171,6 +171,22 @@ let tagged = try await database.read { tx throws(SQLiteError) in
 }
 ```
 
+Typed predicates build the same conditions without writing SQL, wherever a
+``SQLitePredicate`` is accepted (keyset paging, guarded compare-and-set, the model
+layer's `fetchAll(_:where:)` and live results):
+
+```swift
+let filter: SQLitePredicate = .and([
+    .equals("body", path: "$.status", "open"),
+    .contains("body", path: "$.tags", "swift"),     // the array holds the value
+    .greaterThan("body", path: "$.n", 2),
+])
+```
+
+A ``SQLiteJSONPath`` accepts `$`, `.name` and `[index]` steps only. It is checked and
+written into the SQL as a literal, so an index on the same path is used; values are
+bound.
+
 The index is used when the query names the same path literally (`body ->> '$.status'`).
 Integers above 2^53 stay exact. `jsonb_set` changes one field in place. When the
 exact bytes of a canonical JSON encoding matter (hashes, signatures), store those

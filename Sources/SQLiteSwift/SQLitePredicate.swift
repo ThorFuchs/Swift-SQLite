@@ -30,6 +30,10 @@ public struct SQLitePredicate: Sendable, Hashable {
         case and([SQLitePredicate])
         case or([SQLitePredicate])
         case not(SQLitePredicate)
+        case jsonCompare(SQLiteIdentifier, SQLiteJSONPath, String, SQLiteValue)
+        case jsonList(SQLiteIdentifier, SQLiteJSONPath, [SQLiteValue], negated: Bool)
+        case jsonNull(SQLiteIdentifier, SQLiteJSONPath, negated: Bool)
+        case jsonContains(SQLiteIdentifier, SQLiteJSONPath, SQLiteValue)
     }
 
     let node: Node
@@ -84,6 +88,53 @@ public struct SQLitePredicate: Sendable, Hashable {
         SQLitePredicate(.not(inner))
     }
 
+    // MARK: JSON paths
+
+    /// The value at `path` in the JSON in `column` equals `value`.
+    ///
+    /// Renders `column ->> 'path' = ?`: the path is a checked literal, so an index on
+    /// the same expression (`CREATE INDEX … ON t (column ->> '$.status')`) is used; the
+    /// value is bound. JSON `true` and `false` compare as 1 and 0.
+    public static func equals(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, "=", value))
+    }
+    /// The value at `path` exists, is not JSON null, and differs from `value`.
+    public static func notEquals(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, "<>", value))
+    }
+    public static func lessThan(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, "<", value))
+    }
+    public static func lessThanOrEqual(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, "<=", value))
+    }
+    public static func greaterThan(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, ">", value))
+    }
+    public static func greaterThanOrEqual(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonCompare(column, path, ">=", value))
+    }
+    /// The value at `path` equals one of `values`. An empty list matches nothing.
+    public static func isIn(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ values: [SQLiteValue]) -> SQLitePredicate {
+        SQLitePredicate(.jsonList(column, path, values, negated: false))
+    }
+    /// The value at `path` exists, is not JSON null, and equals none of `values`.
+    public static func notIn(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ values: [SQLiteValue]) -> SQLitePredicate {
+        SQLitePredicate(.jsonList(column, path, values, negated: true))
+    }
+    /// `path` is missing or holds JSON null.
+    public static func isNull(_ column: SQLiteIdentifier, path: SQLiteJSONPath) -> SQLitePredicate {
+        SQLitePredicate(.jsonNull(column, path, negated: false))
+    }
+    /// `path` exists and holds something other than JSON null.
+    public static func isNotNull(_ column: SQLiteIdentifier, path: SQLiteJSONPath) -> SQLitePredicate {
+        SQLitePredicate(.jsonNull(column, path, negated: true))
+    }
+    /// The array at `path` has an element equal to `value` (`json_each`).
+    public static func contains(_ column: SQLiteIdentifier, path: SQLiteJSONPath, _ value: SQLiteValue) -> SQLitePredicate {
+        SQLitePredicate(.jsonContains(column, path, value))
+    }
+
     /// The most values one ``isIn(_:_:)`` or ``notIn(_:_:)`` may list.
     public static let maxListCount = 1000
     /// The deepest nesting of ``and(_:)``, ``or(_:)`` and ``not(_:)``.
@@ -107,6 +158,14 @@ public struct SQLitePredicate: Sendable, Hashable {
             }
             bindings.append(value)
             return "(\(try column.quoted()) \(op) ?)"
+        }
+        func checkList(_ values: [SQLiteValue], _ what: String) throws(SQLiteError) {
+            guard values.count <= Self.maxListCount else {
+                throw .invalidArgument("a predicate list has more than \(Self.maxListCount) values")
+            }
+            guard !values.contains(.null) else {
+                throw .invalidArgument("a predicate list for \(what) contains NULL")
+            }
         }
         func list(_ column: SQLiteIdentifier, _ values: [SQLiteValue], negated: Bool) throws(SQLiteError) -> String {
             guard values.count <= Self.maxListCount else {
@@ -144,6 +203,28 @@ public struct SQLitePredicate: Sendable, Hashable {
             return "(\(rendered.joined(separator: " OR ")))"
         case .not(let inner):
             return "(NOT \(try inner.render(into: &bindings, depth: depth + 1)))"
+        case .jsonCompare(let column, let path, let op, let value):
+            guard value != .null else {
+                throw .invalidArgument("comparing \(column) at \(path) with NULL; use .isNull or .isNotNull")
+            }
+            let target = try path.target(column)
+            bindings.append(value)
+            return "(\(target) \(op) ?)"
+        case .jsonList(let column, let path, let values, let negated):
+            try checkList(values, "\(column) at \(path)")
+            let target = try path.target(column)
+            if values.isEmpty { return negated ? "(\(target) IS NOT NULL)" : "(0)" }
+            bindings.append(contentsOf: values)
+            let placeholders = Array(repeating: "?", count: values.count).joined(separator: ", ")
+            return "(\(target) \(negated ? "NOT IN" : "IN") (\(placeholders)))"
+        case .jsonNull(let column, let path, let negated):
+            return "(\(try path.target(column)) IS \(negated ? "NOT " : "")NULL)"
+        case .jsonContains(let column, let path, let value):
+            guard value != .null else {
+                throw .invalidArgument("looking for NULL in \(column) at \(path); not supported")
+            }
+            bindings.append(value)
+            return "(EXISTS (SELECT 1 FROM json_each(\(try column.quoted()), \(try path.literal())) WHERE value = ?))"
         }
     }
 }
@@ -245,5 +326,70 @@ extension SQLiteTransaction {
             next = SQLiteKeysetCursor(values: keyPositions.map { last[$0] })
         }
         return SQLiteKeysetPage(rows: rows, nextCursor: next)
+    }
+}
+
+// MARK: - JSON paths
+
+/// A path into a JSON value, for ``SQLitePredicate`` conditions on JSON columns.
+///
+/// Only a safe subset of SQLite's JSON path syntax is accepted: `$`, followed by
+/// `.name` (a letter or `_`, then letters, digits or `_`) and `[index]` (decimal)
+/// steps, at most 256 characters. Examples: `$.status`, `$.owner.name`, `$.items[0].sku`.
+/// Paths are checked when the predicate is rendered and then written into the SQL as
+/// a literal, which lets SQLite use an index on the same path; values are always bound.
+public struct SQLiteJSONPath: Sendable, Hashable, ExpressibleByStringLiteral, CustomStringConvertible {
+    public let path: String
+
+    public init(_ path: String) {
+        self.path = path
+    }
+
+    public init(stringLiteral value: String) {
+        self.init(value)
+    }
+
+    public var description: String { path }
+
+    /// Checks the path against the accepted grammar.
+    public func validate() throws(SQLiteError) {
+        let bytes = Array(path.utf8)
+        guard !bytes.isEmpty, bytes.count <= 256, bytes[0] == UInt8(ascii: "$") else {
+            throw .invalidArgument("a JSON path starts with $ and has at most 256 characters: \(path)")
+        }
+        var index = 1
+        func isLetter(_ b: UInt8) -> Bool { (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 }
+        func isDigit(_ b: UInt8) -> Bool { b >= 48 && b <= 57 }
+        while index < bytes.count {
+            switch bytes[index] {
+            case UInt8(ascii: "."):
+                index += 1
+                guard index < bytes.count, isLetter(bytes[index]) else {
+                    throw .invalidArgument("a JSON path step .name starts with a letter or _: \(path)")
+                }
+                while index < bytes.count, isLetter(bytes[index]) || isDigit(bytes[index]) { index += 1 }
+            case UInt8(ascii: "["):
+                index += 1
+                let start = index
+                while index < bytes.count, isDigit(bytes[index]) { index += 1 }
+                guard index > start, index < bytes.count, bytes[index] == UInt8(ascii: "]") else {
+                    throw .invalidArgument("a JSON path step [index] holds a decimal number: \(path)")
+                }
+                index += 1
+            default:
+                throw .invalidArgument("unsupported character in JSON path (use .name and [index] steps): \(path)")
+            }
+        }
+    }
+
+    /// The checked path as a SQL string literal.
+    func literal() throws(SQLiteError) -> String {
+        try validate()
+        return "'\(path)'"  // the grammar admits no quote
+    }
+
+    /// `"column" ->> 'path'`.
+    func target(_ column: SQLiteIdentifier) throws(SQLiteError) -> String {
+        "\(try column.quoted()) ->> \(try literal())"
     }
 }

@@ -4,6 +4,12 @@
 
 ### Added
 
+- Typed JSON predicates: `SQLitePredicate` gains `equals`, `notEquals`, `lessThan`,
+  `lessThanOrEqual`, `greaterThan`, `greaterThanOrEqual`, `isIn`, `notIn`, `isNull`,
+  `isNotNull` with a `path:` (`SQLiteJSONPath`) and `contains(_:path:_:)` for arrays.
+  The path is checked (`$`, `.name`, `[index]` only) and written as a literal, so an
+  index on the same path is used; values are bound. They work wherever predicates
+  are accepted, the model layer included.
 - Swift-JSON codecs (`SQLiteSwiftJSON`, trait `SwiftJSON`; without the trait the
   graph stays empty): `SQLiteCodec<JSON>.jsonText` stores an exact Swift-JSON value
   as compact JSON text (numbers as parsed) that SQLite's JSON functions and path
