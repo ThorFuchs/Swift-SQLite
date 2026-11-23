@@ -65,6 +65,7 @@ pinned, unmodified SQLite amalgamation.
 
 - ``SQLiteCompareAndSetResult``
 - ``SQLitePredicate``
+- ``SQLiteJSONPath``
 - ``SQLiteKeysetCursor``
 - ``SQLiteKeysetPage``
 - ``SQLiteAssignment``

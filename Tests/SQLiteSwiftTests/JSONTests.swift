@@ -120,4 +120,100 @@ struct JSONTests {
             #expect(status == .text("done"))
         }
     }
+
+    // MARK: Typed JSON predicates
+
+    private func ids(_ database: SQLiteDatabase, _ predicate: SQLitePredicate) async throws -> [Int64] {
+        let (sql, bindings) = try predicate.render()
+        return try await database.read { (tx) throws(SQLiteError) -> [Int64] in
+            var ids: [Int64] = []
+            for row in try tx.query("SELECT id FROM docs WHERE \(sql) ORDER BY id", bindings) { ids.append(try row.integer(0)) }
+            return ids
+        }
+    }
+
+    @Test("A JSON predicate renders a checked path literal and binds the value")
+    func rendering() throws {
+        let (sql, bindings) = try SQLitePredicate.equals("body", path: "$.owner.name", "Ada").render()
+        #expect(sql == #"("body" ->> '$.owner.name' = ?)"#)
+        #expect(bindings == [.text("Ada")])
+    }
+
+    @Test("Typed JSON predicates: comparisons, lists, null, arrays, combinations")
+    func typedPredicates() async throws {
+        try await withDocs { database in
+            let r1 = try await ids(database, .equals("body", path: "$.status", "open"))
+            #expect(r1 == [1, 3])
+            let r2 = try await ids(database, .notEquals("body", path: "$.status", "open"))
+            #expect(r2 == [2])
+            let r3 = try await ids(database, .greaterThan("body", path: "$.n", 2))
+            #expect(r3 == [1, 3])
+            let r4 = try await ids(database, .lessThanOrEqual("body", path: "$.n", 2))
+            #expect(r4 == [2])
+            let r5 = try await ids(database, .isIn("body", path: "$.status", ["done", "review"]))
+            #expect(r5 == [2])
+            let r6 = try await ids(database, .notIn("body", path: "$.status", ["done"]))
+            #expect(r6 == [1, 3])
+            let r7 = try await ids(database, .isNull("body", path: "$.owner"))
+            #expect(r7 == [2, 3])
+            let r8 = try await ids(database, .isNotNull("body", path: "$.owner.name"))
+            #expect(r8 == [1])
+            let r9 = try await ids(database, .contains("body", path: "$.tags", "swift"))
+            #expect(r9 == [1, 2])
+            let r10 = try await ids(database, .equals("body", path: "$.tags[1]", "sqlite"))
+            #expect(r10 == [1])
+            let r11 = try await ids(database, .and([.equals("body", path: "$.status", "open"),
+                                                  .contains("body", path: "$.tags", "sqlite")]))
+            #expect(r11 == [1])
+        }
+    }
+
+    @Test("The index on the same path is used, also with the quoted column name")
+    func typedPredicateUsesIndex() async throws {
+        try await withDocs { database in
+            let (sql, bindings) = try SQLitePredicate.equals("body", path: "$.status", "open").render()
+            let plan = try await database.read { (tx) throws(SQLiteError) -> [String] in
+                var lines: [String] = []
+                for row in try tx.query("EXPLAIN QUERY PLAN SELECT id FROM docs WHERE \(sql)", bindings) {
+                    lines.append(try row.text(3))
+                }
+                return lines
+            }
+            #expect(plan.contains { $0.contains("INDEX docs_status") }, "\(plan)")
+        }
+    }
+
+    @Test("Typed JSON predicates work where predicates are accepted, for example keyset paging")
+    func inQueryPage() async throws {
+        try await withDocs { database in
+            let page = try await database.read { (tx) throws(SQLiteError) in
+                try tx.queryPage(table: "docs", columns: ["id"], keyColumns: ["id"],
+                                 filter: .contains("body", path: "$.tags", "swift"), limit: 10)
+            }
+            #expect(try page.rows.map { try $0.integer(0) } == [1, 2])
+        }
+    }
+
+    @Test("Unsafe or unsupported paths and NULL comparisons are refused", arguments: [
+        "status", "$.a'b", "$..a", "$.1a", "$[x]", "$.a b", "$.a]", "$[1", "", "$.a\u{0}",
+    ])
+    func refusedPaths(path: String) {
+        let error = rejection { () throws(SQLiteError) in _ = try SQLitePredicate.equals("body", path: SQLiteJSONPath(path), "x").render() }
+        #expect(error?.code == .invalidArgument, "\(path)")
+    }
+
+    @Test("NULL values are refused; use isNull")
+    func nullRefused() {
+        let error = rejection { () throws(SQLiteError) in _ = try SQLitePredicate.equals("body", path: "$.status", .null).render() }
+        #expect(error?.code == .invalidArgument)
+    }
+
+    private func rejection(_ body: () throws(SQLiteError) -> Void) -> SQLiteError? {
+        do throws(SQLiteError) {
+            try body()
+            return nil
+        } catch {
+            return error
+        }
+    }
 }
